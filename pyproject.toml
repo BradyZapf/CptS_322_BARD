@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bard"
+version = "0.1.0"
+description = "Your Canvas coursework, downloaded to your own computer and searchable."
+requires-python = ">=3.11"
+dependencies = [
+    "canvasapi>=3.3",   # Canvas API; only canvas_connection.py imports it
+    "requests>=2.31",
+    "pypdf>=4",         # PDF text
+    "python-docx>=1",   # Word text
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "responses>=0.25", "behave>=1.2", "ruff>=0.5"]
+
+[project.scripts]
+bard = "bard.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["code/backend/src"]
+
+[tool.pytest.ini_options]
+testpaths = ["code/backend/tests"]
+pythonpath = ["code/backend/src", "code/backend/tests"]
+
+[tool.ruff]
+line-length = 110
+src = ["code/backend/src", "code/backend/tests"]
+
+[tool.ruff.lint]
+# Errors and likely bugs only, plus sorted imports. Style is up to the team.
+select = ["E4", "E7", "E9", "F", "I", "B"]

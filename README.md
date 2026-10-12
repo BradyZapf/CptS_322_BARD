@@ -1,8 +1,8 @@
 # CptS_322_BARD
 
-BARD (Canvas Assistant) integrates with Instructure Canvas to help students and
-professors manage coursework — assignments, deadlines, and related tasks — more
-easily.
+BARD (Canvas Assistant) downloads a student's Canvas coursework to their own computer so they can search it and point their own AI tool at it. Everything stays on the user's machine. BARD only reads from Canvas; it never writes to it.
+
+New here? See [GETTING_STARTED.md](GETTING_STARTED.md).
 
 ## What
 A Canvas Assistant for students/professors to make canvas operations easier, to promote learning and engagement 
@@ -15,10 +15,8 @@ administrative tasks. BARD sits on top of Canvas to surface what matters and
 streamline common workflows for both audiences.
 
 ## How
-BARD integrates with the Canvas API to pull assignment, course, and deadline data,
-then presents it through an assistant-style interface that helps users act on it
-(e.g. tracking upcoming work, answering questions about assignments, automating
-routine Canvas tasks). See [docs/Reports/02_Design.md](docs/Reports/02_Design.md)
+BARD uses the Canvas API (read-only) to download assignments, pages, announcements and files, then lets you search them and see what is due next, in your own timezone.
+See [docs/Reports/02_Design.md](docs/Reports/02_Design.md)
 for the detailed architecture.
 
 ## Demo

@@ -41,3 +41,12 @@ env/
 # Misc
 *.tmp
 *.bak
+
+# BARD
+.pytest_cache/
+.ruff_cache/
+config.json
+CLAUDE.local.md
+AGENTS.local.md
+BARD/
+*.db
