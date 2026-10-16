@@ -32,6 +32,12 @@ wins until a human changes it.
 - **`code/backend/src/bard/models.py` is the shared contract.** Do not rename or remove
   anything in it inside a feature branch. If your story needs a change there, stop and tell
   the human. It goes in its own small pull request that the whole team approves first.
+- **Refining your own story's spec is the engineer's call.** You may edit your story's
+  `requirements.md` and `plan.md` in the same pull request when the change is an
+  implementation detail (an extra safety check, a clearer message, a reordered step). The
+  reviewer sees it in the diff. Ask the team first only if the change alters the UML in
+  `docs/design/`, `models.py`, a `features/*.feature` file, or what the story delivers to the
+  user (new scope, a new requirement ID, another story's files).
 - Do not weaken, skip or delete a test to make it pass. If a test looks wrong, say so.
 - Do not touch `features/*.feature` wording: it is the behaviour spec. Change the requirement
   first, as a team.
