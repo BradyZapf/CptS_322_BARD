@@ -23,6 +23,16 @@ wins until a human changes it.
 - **Implement** only inside the files listed in the story's `plan.md`.
 - **Verify.** Run `pytest` and `ruff check .`. Paste the result. A story is done when its tests
   pass with no "not built yet" skips (a skip that says it does not apply on your OS, e.g. Windows, is fine; CI runs all three OSes), not when the code "looks right". Never say done without running them.
+- **Tests must cover the story, not just pass.** Passing tests only count if they would fail
+  when the feature breaks.
+  - Every bullet in the story's `requirements.md` has a test. Tick them off one by one in the
+    pull request.
+  - Test the failure paths too: bad input, something that cannot be removed, nothing found. Check
+    the result and the message, not only that it did not crash.
+  - Test every place where your code is wired into someone else's (for example the call you add
+    in `sync.py`). If you delete that call, a test must fail.
+  - "I tried it by hand" is not a test. If you checked something by hand, write the test too.
+  - Code that touches the token or deletes files needs a test for what happens when it fails.
 
 ## 3. Stay in your lane
 
