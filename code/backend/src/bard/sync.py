@@ -14,6 +14,7 @@ from pathlib import Path
 
 from .canvas_connection import CanvasConnection, NotAvailable, TokenRejected
 from .models import Course, CourseFile, CourseItem
+from .search_index import SearchIndex
 from .sync_report import SyncReport
 
 WINDOWS_RESERVED = {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)),
@@ -43,6 +44,7 @@ class SyncCoursework:
     def __init__(self, connection: CanvasConnection, archive_dir: str | os.PathLike):
         self.connection = connection
         self.archive = Path(archive_dir)
+        self.index = SearchIndex(self.archive / "index.db")
 
     def sync(self, term: str | None = None) -> SyncReport:
         report = SyncReport()
@@ -88,6 +90,7 @@ class SyncCoursework:
         path.write_text(item.to_text(), encoding="utf-8")
         item.local_path = path.relative_to(self.archive).as_posix()
         report.record_saved(item.local_path)
+        self.index.add_item(item)  # FR-06: the CLI searches <archive>/index.db
 
     def _save_file(self, course: Course, f: CourseFile, report: SyncReport) -> None:
         path = self._folder(course, "files") / unique_name(safe_name(f.file_name or f.title), f.item_id)
