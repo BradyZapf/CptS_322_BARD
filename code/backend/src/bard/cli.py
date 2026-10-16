@@ -37,6 +37,26 @@ class SyncCourseworkUI:
         print(summary)
 
 
+def erase_preview(user: User, max_entries: int = 20) -> str | None:
+    """FR-10. What `erase` will delete, shown before the user types yes so a wrong folder is
+    caught. Top-level entries only: walking a wrongly chosen huge folder would be slow.
+    None if there is nothing to erase."""
+    lines: list[str] = []
+    archive = user.storage_path
+    if archive.is_dir():
+        entries = sorted(archive.iterdir())
+        lines.append(f"  Archive: {archive}  ({len(entries)} item{'' if len(entries) == 1 else 's'})")
+        for e in entries[:max_entries]:
+            lines.append(f"    {e.name}{'/' if e.is_dir() else ''}")
+        if len(entries) > max_entries:
+            lines.append(f"    ...and {len(entries) - max_entries} more")
+    if user.config_file.exists():
+        lines.append(f"  Saved Canvas token: {user.config_file}")
+    if not lines:
+        return None
+    return "This will permanently delete:\n" + "\n".join(lines)
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="bard", description="Your Canvas coursework, on your computer.")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -69,11 +89,16 @@ def main(argv: list[str] | None = None) -> int:
             for h in hits:
                 print(f"[{h.source()}]\n  {h.snippet}\n")
         elif a.cmd == "erase":
-            if input("Erase everything BARD has stored? Type yes: ") == "yes":
+            preview = erase_preview(user)
+            if preview is None:
+                print("Nothing to erase.")
+            elif input(f"{preview}\nType yes to erase everything: ").strip().lower() == "yes":
                 if user.delete_all_data():
                     print("Erased. Also revoke the token in Canvas: Account > Settings > Approved Integrations.")
                 else:
                     print("Some things could not be removed (see above). The erase is NOT complete.")
+            else:
+                print("Nothing was erased.")
     except NotImplementedError as e:
         print(f"{e}")
         return 2

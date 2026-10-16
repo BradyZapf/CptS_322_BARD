@@ -2,8 +2,9 @@
 
 ## Files this story touches
 
-- `user.py`: `delete_all_data()`
-- `cli.py`: the message after erasing
+- `user.py`: `delete_all_data()`, plus a private `_unsafe_reason()` safety check
+- `cli.py`: what will be erased (shown before confirming) and the message after erasing
+- `code/backend/tests/test_s1_05_erase.py`: tests for the safety check and the confirmation
 
 Do not change other files except to wire your code in. If `models.py` needs a change, open a
 separate pull request for it first (see AGENTS.md).
@@ -13,6 +14,11 @@ separate pull request for it first (see AGENTS.md).
 1. Add `import shutil` at the top of `user.py` and call it as `shutil.rmtree(self.storage_path)`. Do not write `from shutil import rmtree`: the test replaces `shutil.rmtree` to fake a locked file, and the `from` form would skip the fake.
 1b. A folder that is already gone counts as erased: check `self.storage_path.exists()` first. Wrap the call in `try/except OSError` and collect what failed.
 2. Remove `self.config_file` too.
+2b. Before removing anything, refuse (return False, remove nothing) if the archive folder is the
+    home folder, contains it, or is the top of a drive. This check lives in `User`, not the CLI,
+    so the web page gets the same protection later.
+2c. In `cli.py`, list the archive's path and top-level contents and the token file's path before
+    asking "Type yes". That catches a wrong folder the check above cannot know about.
 3. Small story: a good first one for someone new to Python, or a stretch goal.
 
 ## Before you start (agents too)
