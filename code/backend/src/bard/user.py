@@ -12,7 +12,7 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 
-from .canvas_connection import CanvasConnection
+from .canvas_connection import CanvasConnection, TokenRejected
 from .models import Assignment, Course
 
 DEFAULT_HOME = Path(os.environ.get("BARD_HOME", Path.home() / "BARD"))
@@ -33,7 +33,30 @@ class User:
         """FR-01, NFR-06. Check the token with Canvas; only if Canvas accepts it, save the
         address and token to config_file, readable by this user only (chmod 600).
         A rejected token is NOT saved."""
-        raise NotImplementedError("not built yet, see specs/features/S1-01-connect/")
+        import requests  # local import keeps the module-level namespace tidy
+
+        conn = CanvasConnection(url, token)
+        try:
+            conn.verify_token()
+        except TokenRejected:
+            return False
+        except (requests.ConnectionError, requests.Timeout) as exc:
+            print(f"Could not reach Canvas: {exc}")
+            return False
+
+        # --- save the config file with owner-only permissions ---
+        path = str(self.config_file)
+        self.config_file.parent.mkdir(parents=True, exist_ok=True)
+
+        payload = json.dumps({"url": url, "token": token})
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with open(fd, "w") as f:
+            f.write(payload)
+        # also chmod in case the file already existed before this call
+        os.chmod(path, 0o600)
+
+        self.connection = conn
+        return True
 
     def load_connection(self) -> CanvasConnection | None:
         """The saved connection, or None if the user has not connected yet."""
