@@ -93,22 +93,10 @@ def main(argv: list[str] | None = None) -> int:
             if preview is None:
                 print("Nothing to erase.")
             elif input(f"{preview}\nType yes to erase everything: ").strip().lower() == "yes":
-                had_token = user.config_file.exists()
-                erased = user.delete_all_data()
-                if erased:
-                    print("Erased.")
+                if user.delete_all_data():
+                    print("Erased. Also revoke the token in Canvas: Account > Settings > Approved Integrations.")
                 else:
-                    print("The erase is NOT complete (see above).")
-                    if user.config_file.exists():
-                        print(f"Your saved token is still on this computer: {user.config_file}")
-                    elif had_token:
-                        print("Your saved token was removed from this computer.")
-                if had_token:
-                    # deleting the file does not cancel the token; Canvas accepts it until revoked
-                    print("The token still works in Canvas until you revoke it: "
-                          "Account > Settings > Approved Integrations.")
-                if not erased:
-                    return 1
+                    print("Some things could not be removed (see above). The erase is NOT complete.")
             else:
                 print("Nothing was erased.")
     except NotImplementedError as e:

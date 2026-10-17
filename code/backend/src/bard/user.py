@@ -53,40 +53,34 @@ class User:
 
     def delete_all_data(self) -> bool:
         """FR-10. Remove the archive folder and the saved token. Returns False and names what
-        could not be removed if anything is left.
-
-        If storage_path is somewhere dangerous (see _unsafe_reason) the archive is left alone,
-        but the token is still removed: a wrong BARD_HOME says nothing about the token file,
-        which is BARD's own, and a token left on disk still opens the user's Canvas."""
-        ok = True
+        could not be removed if anything is left. Refuses, removing nothing, if storage_path
+        is somewhere dangerous (see _unsafe_reason)."""
         reason = self._unsafe_reason()
         if reason:
-            print(f"Refusing to erase {self.storage_path}: {reason}. The folder was not touched. "
+            print(f"Refusing to erase {self.storage_path}: {reason}. Nothing was removed. "
                   "Check the BARD_HOME setting.")
-            ok = False
-        elif self.storage_path.exists():  # already gone counts as erased
+            return False
+
+        failed: list[str] = []
+        if self.storage_path.exists():  # already gone counts as erased
             try:
                 shutil.rmtree(self.storage_path)
             except OSError as e:
-                print(f"Could not remove {e.filename or self.storage_path}: {e.strerror or e}")
-                ok = False
-
+                failed.append(f"{e.filename or self.storage_path}: {e.strerror or e}")
         try:
             self.config_file.unlink(missing_ok=True)
         except OSError as e:
-            print(f"Could not remove your saved token {self.config_file}: {e.strerror or e}")
-            ok = False
+            failed.append(f"{self.config_file}: {e.strerror or e}")
 
+        for f in failed:
+            print(f"Could not remove {f}")
         self.connection = None
         self.courses = []
-        return ok
+        return not failed
 
     def _unsafe_reason(self) -> str | None:
         """Why storage_path must not be erased, or None if it is safe. A wrong BARD_HOME must
         never delete the home folder or a whole drive. normcase: Windows paths ignore case."""
-        if self.storage_path.is_symlink():
-            # rmtree refuses links anyway, but with an unreadable error; say it plainly
-            return f"it is a link to {self.storage_path.resolve()}, and erase does not follow links"
         folder = Path(os.path.normcase(self.storage_path.resolve()))
         home = Path(os.path.normcase(Path.home().resolve()))
         if folder == folder.parent:
