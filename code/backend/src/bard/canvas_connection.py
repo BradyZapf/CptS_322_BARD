@@ -13,6 +13,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
+import requests
+
 from .models import Course, CourseItem
 
 
@@ -37,8 +39,17 @@ class CanvasConnection:
 
     def verify_token(self) -> bool:
         """FR-01. True if Canvas accepts the token (GET /api/v1/users/self answers 200).
-        Raises TokenRejected on a 401."""
-        raise NotImplementedError("not built yet, see specs/features/S1-01-connect/")
+        Raises TokenRejected on a 401.
+        Lets requests.ConnectionError / requests.Timeout propagate to the caller."""
+        response = requests.get(
+            f"{self.canvas_url}/api/v1/users/self",
+            headers={"Authorization": f"Bearer {self._access_token}"},
+            timeout=30,
+        )
+        if response.status_code == 401:
+            raise TokenRejected("Canvas rejected the token (401).")
+        response.raise_for_status()
+        return True
 
     def get_courses(self, term: str | None = None) -> list[Course]:
         """FR-02. The user's courses; only `term` if given, else the current term."""
