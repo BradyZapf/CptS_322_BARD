@@ -23,6 +23,16 @@ wins until a human changes it.
 - **Implement** only inside the files listed in the story's `plan.md`.
 - **Verify.** Run `pytest` and `ruff check .`. Paste the result. A story is done when its tests
   pass with no "not built yet" skips (a skip that says it does not apply on your OS, e.g. Windows, is fine; CI runs all three OSes), not when the code "looks right". Never say done without running them.
+- **Tests must cover the story, not just pass.** Passing tests only count if they would fail
+  when the feature breaks.
+  - Every bullet in the story's `requirements.md` has a test. Tick them off one by one in the
+    pull request.
+  - Test the failure paths too: bad input, something that cannot be removed, nothing found. Check
+    the result and the message, not only that it did not crash.
+  - Test every place where your code is wired into someone else's (for example the call you add
+    in `sync.py`). If you delete that call, a test must fail.
+  - "I tried it by hand" is not a test. If you checked something by hand, write the test too.
+  - Code that touches the token or deletes files needs a test for what happens when it fails.
 
 ## 3. Stay in your lane
 
@@ -32,6 +42,12 @@ wins until a human changes it.
 - **`code/backend/src/bard/models.py` is the shared contract.** Do not rename or remove
   anything in it inside a feature branch. If your story needs a change there, stop and tell
   the human. It goes in its own small pull request that the whole team approves first.
+- **Refining your own story's spec is the engineer's call.** You may edit your story's
+  `requirements.md` and `plan.md` in the same pull request when the change is an
+  implementation detail (an extra safety check, a clearer message, a reordered step). The
+  reviewer sees it in the diff. Ask the team first only if the change alters the UML in
+  `docs/design/`, `models.py`, a `features/*.feature` file, or what the story delivers to the
+  user (new scope, a new requirement ID, another story's files).
 - Do not weaken, skip or delete a test to make it pass. If a test looks wrong, say so.
 - Do not touch `features/*.feature` wording: it is the behaviour spec. Change the requirement
   first, as a team.
