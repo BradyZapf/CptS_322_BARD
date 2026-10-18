@@ -75,3 +75,31 @@ def canvas_json_assignments(n: int, course_id: int = 1001) -> list[dict]:
              "due_at": (start + timedelta(days=i)).strftime("%Y-%m-%dT%H:%M:%SZ"),
              "points_possible": 10, "submission_types": ["online_upload"],
              "description": f"<p>Do problem set {i}.</p>"} for i in range(1, n + 1)]
+
+
+def canvas_json_page(page_id: int, title: str = "Welcome", body: str = "<p>Hello.</p>") -> dict:
+    return {"page_id": page_id, "url": f"page-{page_id}", "title": title, "body": body,
+            "updated_at": "2026-09-01T12:00:00Z"}
+
+
+def canvas_json_announcement(topic_id: int, title: str = "Exam moved",
+                             message: str = "<p>The exam is now on Friday.</p>") -> dict:
+    return {"id": topic_id, "title": title, "message": message,
+            "posted_at": "2026-09-02T15:30:00Z"}
+
+
+def canvas_json_file(file_id: int, name: str | None = None, size: int = 1000) -> dict:
+    """A file as GET /files/:id or the Files list describes it (not the file itself)."""
+    name = name or f"slides{file_id}.pdf"
+    return {"id": file_id, "display_name": name, "filename": name.replace(" ", "%20"),
+            "size": size, "updated_at": "2026-09-03T09:00:00Z",
+            "url": f"{URL}/files/{file_id}/download"}
+
+
+def canvas_json_module_item(item_id: int, file_id: int | None = None, title: str = "Notes",
+                            kind: str = "File") -> dict:
+    """One entry in a module. For kind="File", content_id is the file's id."""
+    item = {"id": item_id, "type": kind, "title": title}
+    if file_id is not None:
+        item["content_id"] = file_id
+    return item
