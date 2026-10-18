@@ -15,7 +15,6 @@ from __future__ import annotations
 import functools
 import re
 import time
-import requests
 from collections.abc import Callable, Iterable
 from datetime import datetime, timezone
 from typing import TypeVar
