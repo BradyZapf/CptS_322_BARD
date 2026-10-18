@@ -29,7 +29,11 @@ class Course:
 
     def upcoming_work(self, now: datetime) -> list[Assignment]:
         """FR-07. Assignments in this course due after `now`, soonest first."""
-        raise NotImplementedError("not built yet, see specs/features/S1-03-upcoming-work/")
+        return sorted(
+            (item for item in self.items
+             if isinstance(item, Assignment) and item.due_date is not None and item.due_date > now),
+            key=lambda a: a.due_date,  # type: ignore[return-value]
+        )
 
 
 @dataclass
@@ -77,7 +81,7 @@ class Assignment(CourseItem):
 
     def due_local(self) -> datetime | None:
         """FR-05. The due date in the timezone of the user's computer."""
-        raise NotImplementedError("not built yet, see specs/features/S1-03-upcoming-work/")
+        return self.due_date.astimezone() if self.due_date else None
 
     def to_text(self) -> str:
         due = self.due_date.isoformat() if self.due_date else "no due date"
