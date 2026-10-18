@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Your Canvas coursework, downloaded to your own computer and searchable."
 requires-python = ">=3.11"
 dependencies = [
-    "canvasapi>=3.3",   # Canvas API; only canvas_connection.py imports it
+    "canvasapi>=3.6",   # Canvas API; only canvas_connection.py imports it
     "requests>=2.31",
     "pypdf>=4",         # PDF text
     "python-docx>=1",   # Word text
