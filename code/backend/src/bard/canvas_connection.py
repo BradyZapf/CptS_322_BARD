@@ -15,13 +15,17 @@ from __future__ import annotations
 import functools
 import re
 import time
-from collections.abc import Callable
-from datetime import datetime
+from collections.abc import Callable, Iterable
+from datetime import datetime, timezone
 from typing import TypeVar
 
 import requests
 from canvasapi import Canvas
-from canvasapi.course import Course as CanvasCourse  # Canvas's course, not ours
+
+# Canvas's own classes, renamed so they are not confused with ours from models.py
+from canvasapi.assignment import Assignment as CanvasAssignment
+from canvasapi.course import Course as CanvasCourse
+from canvasapi.discussion_topic import DiscussionTopic as CanvasTopic
 from canvasapi.exceptions import (
     CanvasException,
     Forbidden,
@@ -30,14 +34,23 @@ from canvasapi.exceptions import (
     ResourceDoesNotExist,
     Unauthorized,
 )
+from canvasapi.file import File as CanvasFile
+from canvasapi.page import Page as CanvasPage
 
-from .models import Course, CourseItem
+from .models import Announcement, Assignment, Course, CourseFile, CourseItem, Page
 
 T = TypeVar("T")
 
 MAX_TRIES = 5        # one first try plus four retries
 FIRST_WAIT = 1.0     # seconds; doubles after every failed try (1, 2, 4, 8)
 REQUEST_TIMEOUT = 30  # seconds; a Canvas that has not answered by then counts as broken
+
+# Announcements: Canvas's default window is only the last 14 days, so ask for the whole course.
+ANNOUNCEMENTS_FROM = "2000-01-01"
+ANNOUNCEMENTS_TO = "2100-01-01"
+
+# How course HTML links to a file: /courses/1/files/123/download, /files/123/preview, ...
+FILE_LINK = re.compile(r"/files/(\d+)")
 
 
 class TokenRejected(Exception):
@@ -69,6 +82,13 @@ class _TryAgain(Exception):
 def _sleep(seconds: float) -> None:
     """Module-level so tests can patch it and never really wait."""
     time.sleep(seconds)
+
+
+def _utc(text: str | None) -> datetime | None:
+    """A Canvas timestamp ("2026-09-21T06:59:00Z") as a timezone-aware UTC datetime."""
+    if not text:
+        return None
+    return datetime.fromisoformat(text).astimezone(timezone.utc)
 
 
 class CanvasConnection:
@@ -209,9 +229,137 @@ class CanvasConnection:
         return term.get("name", "")
 
     def get_course_items(self, course: Course) -> list[CourseItem]:
-        """FR-02 / FR-03. Every assignment, announcement, page and file link in a course.
-        Canvas sends long lists 10 at a time: follow every next-page link."""
-        raise NotImplementedError("not built yet, see specs/features/S1-02b-course-contents/")
+        """FR-02 / FR-03. Every assignment, announcement, page and file in a course.
+
+        Canvas sends long lists 10 at a time. Every list is read in full inside _call, so
+        canvasapi follows every next-page link.
+
+        A part of the course the instructor switched off (Files tab hidden, Pages turned off)
+        answers NotAvailable. That part is skipped and the rest is still returned. TokenRejected
+        and CanvasUnreachable are not caught: they stop the sync.
+
+        Files are found three ways and kept once each: the Files list, module items of type
+        File, and /files/<id> links in the HTML of assignments, pages, announcements and the
+        syllabus. A course's syllabus comes back as a Page called "Syllabus".
+        """
+        canvas = self._client()
+
+        # Step 1: the course itself (one GET). syllabus_body is the syllabus HTML, if any.
+        canvas_course = self._call(
+            lambda: canvas.get_course(course.course_id, include=["syllabus_body"])
+        )
+        course.syllabus = getattr(canvas_course, "syllabus_body", None) or ""
+
+        # Step 2: assignments, pages and announcements, each turned into one of ours.
+        assignments = [self._assignment(a, course)
+                       for a in self._list_or_empty(canvas_course.get_assignments)]
+        # The plain page list leaves out each page's body, so ask for it.
+        pages = [self._page(p, course)
+                 for p in self._list_or_empty(lambda: canvas_course.get_pages(include=["body"]))]
+        # Without a date range Canvas returns only the last 14 days of announcements.
+        announcements = [self._announcement(t, course) for t in self._list_or_empty(
+            lambda: canvas.get_announcements(context_codes=[f"course_{course.course_id}"],
+                                             start_date=ANNOUNCEMENTS_FROM,
+                                             end_date=ANNOUNCEMENTS_TO))]
+
+        # Step 3: files, from the three places they can be found.
+        html: list[tuple[str, str]] = [
+            *((f"assignment {a.item_id}", a.description) for a in assignments),
+            *((f"page {p.item_id}", p.body) for p in pages),
+            *((f"announcement {t.item_id}", t.body) for t in announcements),
+            ("syllabus", course.syllabus),
+        ]
+        files = self._files(canvas, canvas_course, course, html)
+
+        # The syllabus is often the only place exam dates are written, so save it like a page.
+        if course.syllabus:
+            pages.append(Page(item_id=course.course_id, title="Syllabus", course_code=course.code,
+                              body=course.syllabus))
+
+        return [*assignments, *announcements, *pages, *files]
+
+    def _list_or_empty(self, fn: Callable[[], Iterable[T]]) -> list[T]:
+        """Read one whole Canvas list (every page) through _call. A part of the course the
+        instructor switched off answers NotAvailable: treat it as empty, so the rest of the
+        course still syncs. (Reporting what was switched off belongs to the coverage report.)"""
+        try:
+            return self._call(lambda: list(fn()))
+        except NotAvailable:
+            return []
+
+    def _files(self, canvas: Canvas, canvas_course: CanvasCourse, course: Course,
+               html: list[tuple[str, str]]) -> list[CourseFile]:
+        """Every file in the course, once each. `html` is (where, text) for every item whose
+        text may link to a file. linked_from says where each file was seen first."""
+        found: dict[int, CourseFile] = {}
+
+        # 1. The Files list. Empty when the instructor hides the Files tab.
+        for f in self._list_or_empty(canvas_course.get_files):
+            found.setdefault(f.id, self._course_file(f, course, "files"))
+
+        # 2 and 3 give only a file id (and maybe a title). file id -> (where, title)
+        linked: dict[int, tuple[str, str]] = {}
+        # 2. Module items of type File. content_id is the file's id.
+        for module in self._list_or_empty(canvas_course.get_modules):
+            for item in self._list_or_empty(module.get_module_items):
+                if getattr(item, "type", "") == "File":
+                    linked.setdefault(item.content_id, ("modules", getattr(item, "title", "")))
+        # 3. Links in the HTML of assignments, pages, announcements and the syllabus.
+        for where, text in html:
+            for file_id in FILE_LINK.findall(text):
+                linked.setdefault(int(file_id), (where, ""))
+
+        for file_id, (where, title) in linked.items():
+            if file_id not in found:
+                found[file_id] = self._linked_file(canvas, file_id, course, where, title)
+        return list(found.values())
+
+    def _linked_file(self, canvas: Canvas, file_id: int, course: Course, where: str,
+                     title: str) -> CourseFile:
+        """Look up a file known only by its id (from a module or a link)."""
+        try:
+            canvas_file = self._call(lambda: canvas.get_file(file_id))
+        except NotAvailable:
+            # Still list it: the sync's fetch_file then records it as missed, with the reason,
+            # instead of the file silently disappearing (mission rule 8: honest reporting).
+            return CourseFile(item_id=file_id, title=title or f"file {file_id}",
+                              course_code=course.code, linked_from=where)
+        return self._course_file(canvas_file, course, where)
+
+    # Turning canvasapi objects into ours. canvasapi gives one attribute per JSON field Canvas
+    # sent, and Canvas leaves some fields out, so possibly-missing ones use getattr(..., default).
+
+    @staticmethod
+    def _assignment(a: CanvasAssignment, course: Course) -> Assignment:
+        return Assignment(
+            item_id=a.id,
+            title=a.name,
+            course_code=course.code,
+            due_date=_utc(getattr(a, "due_at", None)),
+            points_possible=getattr(a, "points_possible", None),
+            submission_types=list(getattr(a, "submission_types", None) or []),
+            description=getattr(a, "description", None) or "",  # null when locked
+        )
+
+    @staticmethod
+    def _page(p: CanvasPage, course: Course) -> Page:
+        return Page(item_id=p.page_id, title=p.title, course_code=course.code,
+                    updated_at=_utc(getattr(p, "updated_at", None)),
+                    body=getattr(p, "body", None) or "")
+
+    @staticmethod
+    def _announcement(t: CanvasTopic, course: Course) -> Announcement:
+        return Announcement(item_id=t.id, title=t.title, course_code=course.code,
+                            posted_at=_utc(getattr(t, "posted_at", None)),
+                            body=getattr(t, "message", None) or "")
+
+    @staticmethod
+    def _course_file(f: CanvasFile, course: Course, where: str) -> CourseFile:
+        # display_name is the readable name; `filename` is URL-encoded ("week%201.pdf").
+        name = getattr(f, "display_name", "") or f"file {f.id}"
+        return CourseFile(item_id=f.id, title=name, course_code=course.code, file_name=name,
+                          linked_from=where, size=getattr(f, "size", 0) or 0,
+                          updated_at=_utc(getattr(f, "updated_at", None)))
 
     def fetch_file(self, file_id: int) -> bytes:
         """FR-03. Download one file by id and return its raw bytes.
