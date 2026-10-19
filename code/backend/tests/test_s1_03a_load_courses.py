@@ -3,10 +3,7 @@
 from datetime import datetime, timezone
 from pathlib import Path
 
-import pytest
-
 from bard.user import User
-
 
 # ---------------------------------------------------------------------------
 # helpers
@@ -23,7 +20,7 @@ def make_assignment_md(
 
 def add_assignment(course_dir: Path, filename: str, content: str) -> Path:
     assignments = course_dir / "assignments"
-    assignments.mkdir(exist_ok=True)
+    assignments.mkdir(parents=True, exist_ok=True)
     p = assignments / filename
     p.write_text(content, encoding="utf-8")
     return p
@@ -38,7 +35,7 @@ def test_load_courses_populates_courses(archive: Path) -> None:
     for code in ("MATH-101", "HIST-200"):
         add_assignment(
             archive / code,
-            f"Homework 1-1001.md",
+            "Homework 1-1001.md",
             make_assignment_md("Homework 1", due="2026-11-01T07:59:00+00:00", points="10.0"),
         )
 
@@ -187,7 +184,6 @@ def test_list_upcoming_work_does_not_reload_if_courses_set(archive: Path) -> Non
     # but self.courses was just set to [] so it IS falsy — it will reload.
     # Correct test: after first load, add a sentinel course and verify it survives.
     user.load_courses()  # reload properly
-    original_count = len(user.courses)
     # now manually add a sentinel
     from bard.models import Course
     sentinel = Course(course_id=999, course_name="Sentinel", code="SENTINEL", term="")
@@ -198,3 +194,5 @@ def test_list_upcoming_work_does_not_reload_if_courses_set(archive: Path) -> Non
     assert any(c.code == "SENTINEL" for c in user.courses), (
         "list_upcoming_work reloaded and overwrote the in-memory courses"
     )
+
+
