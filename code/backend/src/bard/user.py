@@ -72,7 +72,8 @@ class User:
 
     def list_upcoming_work(self, now: datetime) -> list[Assignment]:
         """FR-07. Upcoming assignments from ALL courses in one list, soonest first."""
-        raise NotImplementedError("not built yet, see specs/features/S1-03-upcoming-work/")
+        all_work = [item for course in self.courses for item in course.upcoming_work(now)]
+        return sorted(all_work, key=lambda a: a.due_date)  # type: ignore[return-value]
 
     def delete_all_data(self) -> bool:
         """FR-10. Remove the archive folder and the saved token. Returns False and names what
