@@ -17,7 +17,7 @@ Goal: connect to Canvas, download a course completely, search it, and erase ever
 | S1-01 | Connect a Canvas account | [#4](https://github.com/BradyZapf/CptS_322_BARD/issues/4) | FR-01, NFR-06 | Aiden | Done |
 | S1-02a | Canvas plumbing | [#5](https://github.com/BradyZapf/CptS_322_BARD/issues/5) | FR-02, FR-03 | Ryan | Done |
 | S1-02b | Course contents | [#6](https://github.com/BradyZapf/CptS_322_BARD/issues/6) | FR-02, FR-03 | Drew | Done |
-| S1-03 | Upcoming work in my own timezone | [#7](https://github.com/BradyZapf/CptS_322_BARD/issues/7) | FR-05, FR-07 | Aiden | Not done, moves to Sprint 2 |
+| S1-03 | Upcoming work in my own timezone | [#7](https://github.com/BradyZapf/CptS_322_BARD/issues/7) | FR-05, FR-07 | Aiden | Done |
 | S1-04 | Search my coursework | [#8](https://github.com/BradyZapf/CptS_322_BARD/issues/8) | FR-06, NFR-04 | Brady | Done |
 | S1-05 | Erase everything | [#9](https://github.com/BradyZapf/CptS_322_BARD/issues/9) | FR-10 | Drew | Done |
 
@@ -30,7 +30,6 @@ Carried over from Sprint 1:
 
 | Item | Issue | Covers | Owner | Notes |
 |---|---|---|---|---|
-| S1-03 Upcoming work in my own timezone | [#7](https://github.com/BradyZapf/CptS_322_BARD/issues/7) | FR-05, FR-07 | | Not finished in Sprint 1 |
 | S1-01 follow-ups | [#17](https://github.com/BradyZapf/CptS_322_BARD/issues/17) | FR-01 | | Tell the user when a token is rejected; handle Canvas errors such as 403 and 500 |
 | S1-04 tests | [#13](https://github.com/BradyZapf/CptS_322_BARD/issues/13) | FR-06 | | Follow-up tests for search |
 | S1-05 follow-ups | [#14](https://github.com/BradyZapf/CptS_322_BARD/issues/14) | FR-10 | | Follow-up work for erase |
