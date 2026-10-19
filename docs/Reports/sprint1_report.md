@@ -7,6 +7,7 @@ Video Link: (add the YouTube unlisted link)
 * Connect a Canvas account: BARD checks your token with Canvas and stores it so only you can read it (S1-01, FR-01)
 * Download your courses with error handling, retries and locked-file reporting (S1-02a, FR-02, FR-03)
 * Download everything in your courses, including files linked only from modules (S1-02b, FR-02, FR-03)
+* See upcoming work from every course in one list, in your own timezone (S1-03, FR-05, FR-07)
 * Search your downloaded coursework and see the matching passage and where it came from (S1-04, FR-06)
 * Erase everything BARD stored (S1-05, FR-10)
 
@@ -27,7 +28,7 @@ The team turned the UML class diagram into the code layout, one file per class, 
 
 ## Unfinished Work
 
-S1-03 (Upcoming work) was not finished and moves to Sprint 2. Its issue (#7) stays open with its acceptance criteria.
+All seven Sprint 1 items were merged. Follow-up work (#13, #14 and #17) moves to Sprint 2, including the S1-01 gaps in #17.
 
 ## Completed Issues/User Stories
 
@@ -37,14 +38,15 @@ Here are links to the issues that we completed in this sprint:
 * https://github.com/BradyZapf/CptS_322_BARD/issues/4 (S1-01 Connect a Canvas account)
 * https://github.com/BradyZapf/CptS_322_BARD/issues/5 (S1-02a Canvas plumbing)
 * https://github.com/BradyZapf/CptS_322_BARD/issues/6 (S1-02b Course contents)
+* https://github.com/BradyZapf/CptS_322_BARD/issues/7 (S1-03 Upcoming work)
 * https://github.com/BradyZapf/CptS_322_BARD/issues/8 (S1-04 Search)
 * https://github.com/BradyZapf/CptS_322_BARD/issues/9 (S1-05 Erase)
+* https://github.com/BradyZapf/CptS_322_BARD/issues/19 (S1-03a Load courses from archive)
 
 ## Incomplete Issues/User Stories
 
 Here are links to issues we worked on but did not complete in this sprint:
 
-* https://github.com/BradyZapf/CptS_322_BARD/issues/7 (S1-03 Upcoming work) moves to Sprint 2.
 * https://github.com/BradyZapf/CptS_322_BARD/issues/17 (S1-01 follow-ups): the user is not yet told when a token is rejected, and Canvas errors such as a 403 or 500 are not yet handled. Moves to Sprint 2.
 * https://github.com/BradyZapf/CptS_322_BARD/issues/13 (S1-04 tests) and https://github.com/BradyZapf/CptS_322_BARD/issues/14 (S1-05 follow-ups) are follow-up work for Sprint 2.
 
@@ -66,7 +68,7 @@ Here's what went well:
 * The code was scaffolded up front and the work was split well between us.
 * Every story had a spec and its own test file.
 * CI passed on Windows, Mac and Linux.
-* Six of the seven Sprint 1 items merged.
+* All seven Sprint 1 items merged.
 
 Here's what we'd like to improve:
 * Getting started: we were still learning Git and our tools.
