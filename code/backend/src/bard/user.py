@@ -150,6 +150,7 @@ class User:
         )
 
     def list_upcoming_work(self, now: datetime) -> list[Assignment]:
+
         """FR-07. Upcoming assignments from ALL courses in one list, soonest first.
         Auto-loads from the archive if self.courses is empty (S1-03a)."""
         if not self.courses:
