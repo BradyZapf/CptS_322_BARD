@@ -1,4 +1,4 @@
-# Traceability Matrix
+﻿# Traceability Matrix
 
 Each requirement, traced to its user story, use case, design classes, acceptance scenarios
 and test. An empty Test column means the requirement has not been verified yet. Whether a
@@ -14,6 +14,7 @@ from this table, so add a row when you add either.
 | FR-03 | Files linked inside a course | Collect linked files | CanvasConnection, CourseFile | files_linked_inside_a_course | test_s1_02a_canvas_plumbing, test_s1_02b_course_contents | S1-02a, S1-02b |
 | FR-04 | Coverage report | Report coverage | SyncReport | coverage_report | test_s1_00_sync (part) | S1-00 |
 | FR-05 | Deadlines in my own timezone | View upcoming work | Assignment | deadlines_in_my_own_timezone | test_s1_03_upcoming | S1-03 |
+| — | Load courses from archive (helper, no FR) | View upcoming work | User, Course, Assignment | loading_courses_from_archive | test_s1_03a_load_courses | S1-03a |
 | FR-06 | Searching in plain language | Search coursework | SearchIndex, Passage, CourseItem | searching_in_plain_language | test_s1_04_search | S1-04 |
 | FR-07 | What is due next | View upcoming work | User, Course, Assignment | what_is_due_next | test_s1_03_upcoming | S1-03 |
 | FR-08 | Exporting part of the archive | Export coursework | Exporter, CourseItem | exporting_part_of_the_archive |  |  |
@@ -23,9 +24,10 @@ from this table, so add a row when you add either.
 | NFR | Checked by |
 |---|---|
 | NFR-01 Privacy | code review against mission.md rule 2; only `CanvasConnection` makes network calls |
-| NFR-02 Offline | search and upcoming work read only local files (tests run with no network) |
+| NFR-02 Offline | search and upcoming work read only local files; `load_courses()` rebuilds from disk so `bard due` works without re-syncing (test_s1_03a_load_courses) |
 | NFR-03 No re-download | test_s1_00_sync::test_unchanged_file_is_not_downloaded_twice |
 | NFR-04 Search < 1 s | test_s1_04_search::test_search_is_fast |
 | NFR-05 Local interface token | applies to the web page only (stdio MCP has no port) |
 | NFR-06 Token file owner-only | test_s1_01_connect::test_token_file_is_owner_only |
 | NFR-07 Three systems | CI runs on Ubuntu, Windows and macOS; test_s1_00_sync::test_file_names_are_safe_on_windows |
+
