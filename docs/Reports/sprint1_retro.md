@@ -8,7 +8,7 @@
 - Tests used fake Canvas data only, so no real coursework reached the repo.
 - CI on Windows, Mac and Linux passed on the pull requests.
 - Splitting S1-02 into plumbing (S1-02a) and contents (S1-02b) let the foundation merge first, and the dependent story built on it.
-- Six of the seven Sprint 1 items merged: S1-00, S1-01, S1-02a, S1-02b, S1-04, S1-05.
+- All seven Sprint 1 items merged: S1-00, S1-01, S1-02a, S1-02b, S1-03, S1-04, S1-05.
 
 ## What did not go well
 - Getting started was hard. We were still learning Git and our software, so the first pull requests took a long time, and the repo had no code until 10/12.
@@ -26,5 +26,5 @@
 
 ## Review meeting outcome
 
-Completed and demonstrated: S1-00 skeleton and sync, S1-01 connect, S1-02a Canvas plumbing, S1-02b course contents, S1-04 search, S1-05 erase.
-Not completed, and why: S1-03 upcoming work moves to Sprint 2.
+Completed and demonstrated: S1-00 skeleton and sync, S1-01 connect, S1-02a Canvas plumbing, S1-02b course contents, S1-03 upcoming work, S1-04 search, S1-05 erase.
+Not completed, and why: nothing from the seven items. Follow-up work (#13, #14 and #17) moves to Sprint 2.
