@@ -12,7 +12,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from .canvas_connection import CanvasConnection, NotAvailable, TokenRejected
+from .canvas_connection import CanvasConnection, CanvasUnreachable, NotAvailable, TokenRejected
 from .models import Course, CourseFile, CourseItem
 from .search_index import SearchIndex
 from .sync_report import SyncReport
@@ -103,6 +103,9 @@ class SyncCoursework:
             data = self.connection.fetch_file(f.item_id)
         except NotAvailable as e:
             report.record_missed(f.file_name or f.title, e.reason)
+            return
+        except CanvasUnreachable as e:
+            report.record_missed(f.file_name or f.title, str(e))
             return
         path.write_bytes(data)
         if f.updated_at:  # remember Canvas's timestamp, so is_unchanged() can compare next time
