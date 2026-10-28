@@ -10,7 +10,8 @@ Done means all of these are true. The pull request template has the checklist to
 - A fake course with one new file shows that file under new
 - A blocked Files tab shows as blocked, not as error
 - A second sync with no changes shows nothing new
-- Tried by hand with `python -m bard sync`
+- A test with the fake connection captures the progress output and finds the course, a downloaded file, a skipped file with its reason, and no token
+- Tried by hand: `python -m bard sync` shows the course, each part and each file as it goes, then the report
 - The `models.py` change from S2-01 is its own pull request, and the whole team approved it
 - Pull request reviewed by one teammate, linked to its issue, then merged
 - AI use, if any, written in the pull request

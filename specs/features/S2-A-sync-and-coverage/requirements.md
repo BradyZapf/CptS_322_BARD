@@ -51,6 +51,14 @@ Blocked and locked are the instructor's choice, so the report counts them as nor
 - Below the table, only real problems are listed (error cells, failed files, unreadable files), each with its reason; blocked and locked files are only counted
 - A course Canvas refuses as a whole is one row marked not accessible
 
+### While the sync runs
+
+- While `python -m bard sync` runs, the terminal shows which course it is on, each part of the course as it is read (files, modules, assignments, pages, announcements), and each file as it is downloaded
+- A running count of saved, unchanged and failed files is shown; unchanged files are counted and not listed one by one
+- A file that is skipped or fails is shown at once, with its reason
+- The progress is printed separately from the final report, so saving the report to a file does not include the progress lines, and the report is still printed at the end
+- No progress line shows the token or a full download link, and a failure to print progress does not stop the sync
+
 ## S2-04 Show what is new since the last sync
 
 ### Acceptance criteria
