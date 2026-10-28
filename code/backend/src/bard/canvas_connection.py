@@ -121,6 +121,9 @@ class CanvasConnection:
         self._quota_left: float | None = None  # from the last answer; None if Canvas did not say
         # Called with the name of each part of a course just before it is read (live progress).
         self.on_part: Callable[[str], None] | None = None
+        # What each part of the course LAST read answered: part -> "ok", "empty" or "blocked: <why>".
+        # A side channel for the coverage report; get_course_items still returns only the items.
+        self.part_results: dict[str, str] = {}
 
     def _client(self) -> Canvas:
         """A canvasapi client for this URL and token. Only GET calls are ever made through it."""
@@ -298,6 +301,7 @@ class CanvasConnection:
         is fetched too. A course's syllabus comes back as a Page called "Syllabus".
         """
         canvas = self._client()
+        self.part_results = {}
 
         # Step 1: the course itself (one GET). syllabus_body is the syllabus HTML, if any.
         canvas_course = self._call(
@@ -349,9 +353,14 @@ class CanvasConnection:
         if part and self.on_part:
             self.on_part(part)
         try:
-            return self._call(lambda: list(fn()))
-        except NotAvailable:
+            result = self._call(lambda: list(fn()))
+        except NotAvailable as e:
+            if part:
+                self.part_results[part] = f"blocked: {e.reason}"
             return []
+        if part:
+            self.part_results[part] = "ok" if result else "empty"
+        return result
 
     def _modules(self, canvas_course: CanvasCourse, course: Course) -> ModuleScan:
         """S2-02. Every module with its items in Canvas's order, read once, plus what they point

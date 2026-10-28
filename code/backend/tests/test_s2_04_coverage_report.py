@@ -239,3 +239,84 @@ def _course_with(*items):
     c = course(1)
     c.items.extend(items)
     return c
+
+
+# ---------------------------------------------------- stacked on PR 2 and PR 3: real tab answers
+
+import pytest  # noqa: E402
+import responses  # noqa: E402
+
+from bard import canvas_connection  # noqa: E402
+from bard.canvas_connection import CanvasConnection, CanvasUnreachable, NotAvailable  # noqa: E402
+from fakes import TOKEN, URL  # noqa: E402
+from test_s2_02_modules_files_fallback import BLOCKED, serve  # noqa: E402
+
+
+class OneCourse(CanvasConnection):
+    """The real connection reading a mocked Canvas, with the course list and token check faked."""
+
+    def __init__(self, courses):
+        super().__init__(URL, TOKEN)
+        self.courses = courses
+
+    def verify_token(self):
+        return None
+
+    def get_courses(self, term=None):
+        return self.courses
+
+
+@pytest.fixture
+def no_waiting(monkeypatch):
+    monkeypatch.setattr(canvas_connection, "_sleep", lambda seconds: None)
+
+
+@responses.activate
+def test_modules_switched_off_say_blocked_not_n_a(archive, no_waiting):
+    c = course(1)
+    serve(c, {})
+    responses.replace(responses.GET, f"{URL}/api/v1/courses/{c.course_id}/modules", status=403, json=BLOCKED)
+    report = SyncCoursework(OneCourse([c]), archive).sync()
+    text = render(build_coverage(report.courses, report.missed, report.sync_date, report.part_outcomes))
+    assert table_row(text, "FAKE-101")[2] == "blocked"
+
+
+@responses.activate
+def test_a_course_with_no_modules_says_empty_not_n_a(archive, no_waiting):
+    c = course(1)
+    serve(c, {})
+    report = SyncCoursework(OneCourse([c]), archive).sync()
+    text = render(build_coverage(report.courses, report.missed, report.sync_date, report.part_outcomes))
+    assert table_row(text, "FAKE-101")[2] == "empty"
+
+
+@responses.activate
+def test_a_course_with_modules_says_ok(archive, no_waiting):
+    c = course(1)
+    serve(c, {10: []})
+    report = SyncCoursework(OneCourse([c]), archive).sync()
+    text = render(build_coverage(report.courses, report.missed, report.sync_date, report.part_outcomes))
+    assert table_row(text, "FAKE-101")[2] == "ok"
+
+
+def test_a_connection_that_does_not_say_leaves_modules_n_a(archive):
+    report = SyncCoursework(FakeConnection({"c1": [pdf(1)]}), archive).sync()
+    assert report.part_outcomes == {}
+
+
+def test_progress_missed_reasons_classify_by_their_ending(archive):
+    """PR 3 records an unreachable course and the 'not tried' courses after it; PR 3 also records a
+    refused one (403). Only the refused one is normal."""
+    class Mixed(FakeConnection):
+        def get_course_items(self, course):
+            if course.code.endswith("1"):
+                raise NotAvailable("Canvas refused this course (403)")
+            raise CanvasUnreachable("cannot reach Canvas: timed out")
+
+    conn = Mixed({"c1": [], "c2": [], "c3": [], "c4": []})
+    report = SyncCoursework(conn, archive).sync()
+    text = render(build_coverage(report.courses, report.missed, report.sync_date, report.part_outcomes))
+    rows = section(text, "Coverage")
+    assert any("not accessible" in r for r in rows)
+    assert any("error: " in r for r in rows)
+    assert any("whole course" in p and "cannot reach" in p for p in section(text, "Problems"))

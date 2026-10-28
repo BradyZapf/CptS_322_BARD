@@ -78,7 +78,7 @@ def _files_cell(files: list[CourseFile]) -> Outcome:
 
 
 def build_coverage(courses: list[Course], missed: list[tuple[str, str]], sync_started: datetime,
-                   part_outcomes: dict[tuple[str, str], tuple[Outcome, str]] | None = None) -> Coverage:
+                   part_outcomes: dict[tuple[str, str], tuple[Outcome | str, str]] | None = None) -> Coverage:
     """courses and missed come from a finished sync (SyncReport.courses and .missed).
     sync_started is SyncReport.sync_date: an item is new when it was first seen at or after it.
     part_outcomes lets a later part of the sync say what a tab really answered, as
@@ -111,10 +111,11 @@ def build_coverage(courses: list[Course], missed: list[tuple[str, str]], sync_st
                 row[part] = _files_cell(items)  # type: ignore[arg-type]
             elif items:
                 row[part] = Outcome.OK
-            else:  # modules are not synced yet, so an empty list proves nothing
+            else:  # no list was asked about, so an empty one proves nothing
                 row[part] = Outcome.NOT_ASKED if part == "modules" else Outcome.EMPTY
             if (course.code, part) in part_outcomes:
-                row[part], reason = part_outcomes[(course.code, part)]
+                outcome, reason = part_outcomes[(course.code, part)]
+                row[part] = Outcome(outcome)  # the sync passes plain strings
                 if row[part] is Outcome.ERROR:
                     cov.problems.append(Problem(course.code, part, reason))
         cov.cells[course.code] = row

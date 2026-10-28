@@ -99,6 +99,7 @@ class SyncCoursework:
                 in_a_row = in_a_row + 1 if isinstance(e, CanvasUnreachable) else 0
                 continue
             in_a_row = 0
+            self._note_part_outcomes(course, items, report)
             self.progress.items_found(items)
             for item in items:
                 if isinstance(item, CourseFile):
@@ -110,6 +111,19 @@ class SyncCoursework:
 
         # 1.1.4 summarize() happens in the UI, which calls report.summarize()
         return report
+
+    def _note_part_outcomes(self, course: Course, items: list[CourseItem], report: SyncReport) -> None:
+        """What each tab answered, for the coverage report. A connection that does not say (the
+        fake one) leaves the report to derive it from the items. Only what the items cannot show
+        is kept: a switched-off tab, and modules that came back empty."""
+        results = getattr(self.connection, "part_results", None) or {}
+        for part, result in results.items():
+            if result.startswith("blocked"):
+                if part == "files" and any(isinstance(i, CourseFile) for i in items):
+                    continue  # files found another way: the cell stays derived from them
+                report.part_outcomes[(course.code, part)] = ("blocked", result.removeprefix("blocked: "))
+            elif part == "modules" and result == "empty":
+                report.part_outcomes[(course.code, part)] = ("empty", "")
 
     def _folder(self, course: Course, kind: str) -> Path:
         d = self.archive / safe_name(course.code) / kind
