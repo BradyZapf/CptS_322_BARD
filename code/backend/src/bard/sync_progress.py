@@ -5,16 +5,22 @@ The words go to a callback, so the tests collect them in a list and the command 
 to stderr. Stderr is a separate stream from the report, so `bard sync > report.txt` saves the
 report without the progress lines.
 
+Canvas file names and reasons are text from outside, so control characters (an escape code, a
+carriage return) are replaced with "?" before anything is printed.
+
 A progress line only ever holds a course code, a file name and a reason. Reasons come from
 CanvasConnection, which removes the access token from them, and no line holds a download link.
 """
 
 from __future__ import annotations
 
+import re
 from collections import Counter
 from collections.abc import Callable
 
 from .models import Course, CourseFile, CourseItem, FileStatus
+
+CONTROL_CHARACTERS = re.compile(r"[\x00-\x1f\x7f]")
 
 # What a student calls each kind of item (the class names read badly: "coursefiles").
 KIND_NAMES = {"Assignment": "assignment", "Page": "page", "Announcement": "announcement",
@@ -35,13 +41,17 @@ class SyncProgress:
         if self._say is None:
             return
         try:
-            self._say(line)
+            self._say(CONTROL_CHARACTERS.sub("?", line))
         except Exception:
             self._say = None  # stop trying; one broken callback should not fail every file
 
     def course_started(self, course: Course, number: int, total: int) -> None:
         self.counts.clear()
         self._print(f"Course {number} of {total}: {course.code}")
+
+    def part_started(self, part: str) -> None:
+        """The connection is about to read one part of a course ("files", "pages", ...)."""
+        self._print(f"  reading {part}...")
 
     def course_skipped(self, course: Course, reason: str) -> None:
         self._print(f"  skipped the whole course: {reason}")
@@ -65,7 +75,7 @@ class SyncProgress:
         elif f.status == FileStatus.FAILED:
             self.counts["failed"] += 1
             self._print(f"  FAILED {name}: {f.status_reason}   [{self._tally()}]")
-        else:  # blocked or locked: the instructor's choice
+        else:  # FileStatus.BLOCKED or LOCKED: the instructor's choice, so not a failure
             self.counts["skipped"] += 1
             self._print(f"  skipped {name}: {f.status_reason}   [{self._tally()}]")
 

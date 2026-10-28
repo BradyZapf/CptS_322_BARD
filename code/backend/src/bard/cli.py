@@ -20,7 +20,8 @@ from .user import User
 
 
 def show_progress(line: str) -> None:
-    """S2-03. Progress goes to stderr, so `bard sync > report.txt` keeps it out of the report."""
+    """S2-03. Progress goes to stderr, so `bard sync > report.txt` keeps it out of the report
+    (`2> progress.txt` saves only the progress)."""
     print(line, file=sys.stderr, flush=True)
 
 

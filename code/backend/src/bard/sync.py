@@ -48,6 +48,9 @@ def unique_name(name: str, item_id: int) -> str:
     return f"{stem}-{item_id}{dot}{ext}"
 
 
+GIVE_UP_AFTER = 2  # a Canvas that is down fails every course; stop waiting through retries for each
+
+
 class SyncCoursework:
     def __init__(self, connection: CanvasConnection, archive_dir: str | os.PathLike,
                  progress: Callable[[str], None] | None = None):
@@ -76,7 +79,14 @@ class SyncCoursework:
         except CanvasUnreachable as e:  # still failing after every retry
             report.record_missed("course list", str(e))
             return report
+        self.connection.on_part = self.progress.part_started  # "reading pages..." as each part starts
+        in_a_row = 0  # courses in a row that Canvas could not answer after every retry
         for number, course in enumerate(courses, start=1):
+            if in_a_row >= GIVE_UP_AFTER:
+                reason = f"not tried: Canvas was unreachable for {GIVE_UP_AFTER} courses in a row"
+                report.record_missed(course.code, reason)
+                self.progress.course_skipped(course, reason)
+                continue
             self.progress.course_started(course, number, len(courses))
             # getCourseItems(course): every page of results (sequence diagram)
             try:
@@ -85,7 +95,9 @@ class SyncCoursework:
                 reason = e.reason if isinstance(e, NotAvailable) else str(e)
                 report.record_missed(course.code, reason)
                 self.progress.course_skipped(course, reason)
+                in_a_row = in_a_row + 1 if isinstance(e, CanvasUnreachable) else 0
                 continue
+            in_a_row = 0
             self.progress.items_found(items)
             for item in items:
                 if isinstance(item, CourseFile):

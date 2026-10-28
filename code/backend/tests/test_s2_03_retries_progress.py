@@ -5,18 +5,23 @@ No test here really waits: the connection's _sleep is replaced by a list that re
 """
 
 import pytest
+import requests
 import responses
 
 from bard import canvas_connection, cli
 from bard.canvas_connection import (
     LOW_QUOTA,
     QUOTA_HEADER,
-    QUOTA_WAIT,
+    QUOTA_LEAK_PER_SECOND,
+    QUOTA_WAIT_MAX,
+    QUOTA_WAIT_MIN,
     CanvasConnection,
     CanvasUnreachable,
 )
-from bard.sync import SyncCoursework
-from fakes import TOKEN, URL, FakeConnection, assignment, pdf
+from bard.sync import GIVE_UP_AFTER, SyncCoursework
+from bard.sync_progress import SyncProgress
+from fakes import TOKEN, URL, FakeConnection, assignment, course, pdf
+from test_s1_02b_course_contents import serve_course
 
 USER_URL = f"{URL}/api/v1/users/self"
 FAKE_STUDENT = {"id": 42, "name": "Pat Student", "short_name": "Pat"}
@@ -28,6 +33,11 @@ def waits(monkeypatch):
     recorded: list[float] = []
     monkeypatch.setattr(canvas_connection, "_sleep", recorded.append)
     return recorded
+
+
+def quota_wait(remaining: float) -> float:
+    """How long the connection should wait when Canvas says `remaining` is left."""
+    return min((LOW_QUOTA - remaining) / QUOTA_LEAK_PER_SECOND + QUOTA_WAIT_MIN, QUOTA_WAIT_MAX)
 
 
 def ask_who_am_i(conn: CanvasConnection):
@@ -48,14 +58,27 @@ def sync_with_progress(archive, connection=None):
 
 @responses.activate
 def test_waits_before_the_next_request_when_the_quota_is_low(waits):
-    responses.get(USER_URL, json=FAKE_STUDENT, headers={QUOTA_HEADER: str(LOW_QUOTA - 1)})
+    responses.get(USER_URL, json=FAKE_STUDENT, headers={QUOTA_HEADER: str(LOW_QUOTA - 20)})
     conn = CanvasConnection(URL, TOKEN)
 
     ask_who_am_i(conn)
     assert waits == []  # the first request has nothing to be careful about yet
     ask_who_am_i(conn)
 
-    assert waits == [QUOTA_WAIT]
+    assert waits == [pytest.approx(quota_wait(LOW_QUOTA - 20))]
+    assert waits == [pytest.approx(2.5)]  # 20 short of the limit: 20 / 10 + 0.5
+
+
+@responses.activate
+def test_the_wait_grows_with_the_shortfall_up_to_a_limit(waits):
+    for remaining in ("90", "0"):  # 10 short, then 100 short
+        responses.add(responses.GET, USER_URL, json=FAKE_STUDENT, headers={QUOTA_HEADER: remaining})
+    conn = CanvasConnection(URL, TOKEN)
+
+    for _ in range(3):
+        ask_who_am_i(conn)
+
+    assert waits == [pytest.approx(1.5), QUOTA_WAIT_MAX]  # 100 / 10 + 0.5 is capped at 10
 
 
 @responses.activate
@@ -80,11 +103,11 @@ def test_waits_once_and_then_asks_again_before_waiting_again(waits):
     for _ in range(4):
         ask_who_am_i(conn)
 
-    assert waits == [QUOTA_WAIT, QUOTA_WAIT]  # before request 2 and before request 4
+    assert waits == [pytest.approx(quota_wait(5))] * 2  # before request 2 and before request 4
 
 
 @responses.activate
-@pytest.mark.parametrize("odd", ["", "lots", "nan-ish"])
+@pytest.mark.parametrize("odd", ["", "lots", "1,5"])
 def test_a_missing_or_odd_quota_header_is_ignored(odd, waits):
     responses.get(USER_URL, json=FAKE_STUDENT, headers={QUOTA_HEADER: odd})
     conn = CanvasConnection(URL, TOKEN)
@@ -103,7 +126,7 @@ def test_a_429_is_still_retried_with_the_quota_wait_on_top(waits):
     user = ask_who_am_i(CanvasConnection(URL, TOKEN))
 
     assert user.id == FAKE_STUDENT["id"]
-    assert waits == [1.0, QUOTA_WAIT]  # the retry's own wait, then the quota wait before the 2nd request
+    assert waits == [1.0, QUOTA_WAIT_MAX]  # the retry's own wait, then the quota wait (0 left)
 
 
 # --- S2-03: live progress --------------------------------------------------------------------
@@ -221,3 +244,132 @@ def test_a_course_list_that_keeps_failing_is_reported_and_nothing_is_saved(archi
 
     assert report.missed == [("course list", "gave up after 5 tries: rate limited (429)")]
     assert report.entries == []
+
+
+def test_a_connection_error_with_the_token_in_it_never_reaches_a_progress_line(archive):
+    # The real connection scrubs the token from its errors; the progress line shows the scrubbed text.
+    class RealDownload(FakeConnection):
+        real = CanvasConnection(URL, TOKEN)
+
+        def fetch_file(self, file_id):
+            return self.real.fetch_file(file_id)
+
+    with responses.RequestsMock() as mock:
+        mock.get(f"{URL}/api/v1/files/2", json={"id": 2, "url": f"{URL}/files/2/download"})
+        mock.get(f"{URL}/files/2/download", body=requests.ConnectionError(f"reset, token {TOKEN}"))
+        _, lines = sync_with_progress(archive, RealDownload({"c1": [pdf(2)]}))
+
+    failed = [line for line in lines if "FAILED" in line]
+    assert failed and "[token]" in failed[0]
+    assert TOKEN not in "\n".join(lines)
+
+
+# --- S2-03: each part of a course is announced as it is read -----------------------------
+
+
+@responses.activate
+def test_each_part_is_announced_in_the_order_it_is_read():
+    c = course(1)
+    serve_course(c)
+    conn = CanvasConnection(URL, TOKEN)
+    parts: list[str] = []
+    conn.on_part = parts.append
+
+    conn.get_course_items(c)
+
+    assert parts == ["assignments", "pages", "announcements", "files", "modules"]
+
+
+@responses.activate
+def test_parts_become_progress_lines_after_the_course_line():
+    c = course(1)
+    serve_course(c)
+
+    lines: list[str] = []
+    progress = SyncProgress(lines.append)
+    conn = CanvasConnection(URL, TOKEN)
+    conn.on_part = progress.part_started
+    progress.course_started(c, 1, 1)
+    conn.get_course_items(c)
+
+    assert lines[0] == "Course 1 of 1: FAKE-101"
+    assert lines[1:] == [f"  reading {p}..." for p in
+                         ("assignments", "pages", "announcements", "files", "modules")]
+
+
+def test_the_sync_connects_the_connection_to_the_progress(archive):
+    conn = FakeConnection({"c1": [pdf(1)]})
+    SyncCoursework(conn, archive, progress=lambda line: None).sync()
+
+    assert conn.on_part is not None
+
+
+# --- Text from Canvas is cleaned before it is printed ------------------------------------
+
+
+def test_control_characters_in_a_file_name_or_reason_are_replaced():
+    lines: list[str] = []
+    f = pdf(1)
+    f.file_name = "evil\x1b[2Jname\r.pdf"
+    f.status, f.status_reason = "failed", "bad\nreason\x00"
+    SyncProgress(lines.append).file_done(f)
+
+    [line] = lines
+    assert "\x1b" not in line and "\r" not in line and "\n" not in line and "\x00" not in line
+    assert "evil?[2Jname?.pdf" in line and "bad?reason?" in line
+
+
+# --- Giving up when Canvas is down ---------------------------------------------------------
+
+
+class DownCourses(FakeConnection):
+    """Canvas gives up on the contents of the courses whose index is in `down` (1 = first)."""
+
+    def __init__(self, *args, down=(), **kwargs):
+        super().__init__(*args, **kwargs)
+        self.down = set(down)
+        self.asked: list[int] = []
+
+    def get_course_items(self, c):
+        self.asked.append(c.course_id - 1000)
+        if c.course_id - 1000 in self.down:
+            raise CanvasUnreachable("gave up after 5 tries: Canvas server error (503)")
+        return super().get_course_items(c)
+
+
+def four_courses(**kwargs):
+    return DownCourses({f"c{i}": [pdf(i)] for i in range(1, 5)}, **kwargs)
+
+
+def test_the_sync_stops_asking_after_two_courses_in_a_row_fail(archive):
+    conn = four_courses(down={1, 2})
+    report, lines = sync_with_progress(archive, conn)
+
+    assert GIVE_UP_AFTER == 2
+    assert conn.asked == [1, 2]  # courses 3 and 4 were never asked
+    assert [what for what, _ in report.missed] == ["FAKE-101", "FAKE-202", "FAKE-303", "FAKE-404"]
+    assert report.missed[2][1] == "not tried: Canvas was unreachable for 2 courses in a row"
+    assert "  skipped the whole course: not tried: Canvas was unreachable for 2 courses in a row" in lines
+
+
+def test_a_course_that_works_starts_the_count_again(archive):
+    conn = four_courses(down={1, 3})  # fail, ok, fail, ok: never two in a row
+    report, _ = sync_with_progress(archive, conn)
+
+    assert conn.asked == [1, 2, 3, 4]
+    assert len(report.entries) == 2
+
+
+@responses.activate
+def test_a_real_connection_that_answers_503_every_time_still_gives_a_report(archive, waits):
+    responses.get(USER_URL, json=FAKE_STUDENT)
+    responses.get(f"{URL}/api/v1/courses", json=[
+        {"id": 1001, "name": "Fake Course 1", "course_code": "FAKE-101", "term": {"name": "2026 Fall"}}])
+    responses.get(f"{URL}/api/v1/courses/1001", status=503, json={})
+
+    report = SyncCoursework(CanvasConnection(URL, TOKEN), archive).sync()
+
+    assert len(report.missed) == 1
+    assert report.missed[0][0] == "FAKE-101"
+    assert report.missed[0][1].startswith("gave up after 5 tries")
+    assert report.summarize().startswith("Saved 0 items.")

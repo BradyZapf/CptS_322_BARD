@@ -49,7 +49,11 @@ REQUEST_TIMEOUT = 30  # seconds; a Canvas that has not answered by then counts a
 # X-Rate-Limit-Remaining header of every answer. Below LOW_QUOTA the next request waits first.
 QUOTA_HEADER = "X-Rate-Limit-Remaining"
 LOW_QUOTA = 100.0
-QUOTA_WAIT = 2.0     # seconds; the quota refills over time, so a short pause is enough
+# Canvas's bucket holds about 700 units and leaks about 10 a second, so waiting shortfall / 10
+# seconds earns back what was missing. At least QUOTA_WAIT_MIN, at most QUOTA_WAIT_MAX.
+QUOTA_LEAK_PER_SECOND = 10.0
+QUOTA_WAIT_MIN = 0.5
+QUOTA_WAIT_MAX = 10.0
 
 # Announcements: Canvas's default window is only the last 14 days, so ask for the whole course.
 ANNOUNCEMENTS_FROM = "2000-01-01"
@@ -114,7 +118,9 @@ class CanvasConnection:
         self.canvas_url = canvas_url.rstrip("/")
         self._access_token = access_token  # leading underscore = private ("-" in the UML)
         self.last_synced: datetime | None = None
-        self._quota_low = False  # set when the last answer said the quota is nearly used up
+        self._quota_left: float | None = None  # from the last answer; None if Canvas did not say
+        # Called with the name of each part of a course just before it is read (live progress).
+        self.on_part: Callable[[str], None] | None = None
 
     def _client(self) -> Canvas:
         """A canvasapi client for this URL and token. Only GET calls are ever made through it."""
@@ -129,9 +135,10 @@ class CanvasConnection:
 
         def send_politely(*args, **kwargs):
             """S2-05. Every request, including file downloads, passes through here."""
-            if self._quota_low:
-                self._quota_low = False  # the next answer sets it again if still low
-                _sleep(QUOTA_WAIT)
+            if self._quota_left is not None and self._quota_left < LOW_QUOTA:
+                shortfall = LOW_QUOTA - self._quota_left
+                self._quota_left = None  # forget it: the next answer says how things are now
+                _sleep(min(shortfall / QUOTA_LEAK_PER_SECOND + QUOTA_WAIT_MIN, QUOTA_WAIT_MAX))
             response = send(*args, **kwargs)
             self._note_quota(response)
             return response
@@ -140,11 +147,11 @@ class CanvasConnection:
         return canvas
 
     def _note_quota(self, response: requests.Response) -> None:
-        """Remember whether Canvas says the quota is low. A missing or odd header is ignored."""
+        """Remember how much quota Canvas says is left. A missing or odd header means unknown."""
         try:
-            self._quota_low = float(response.headers[QUOTA_HEADER]) < LOW_QUOTA
+            self._quota_left = float(response.headers[QUOTA_HEADER])
         except (KeyError, ValueError):
-            self._quota_low = False
+            self._quota_left = None
 
     def _scrub(self, text: str) -> str:
         """Remove the access token from text that may leave this object."""
@@ -282,7 +289,8 @@ class CanvasConnection:
 
         A part of the course the instructor switched off (Files tab hidden, Pages turned off)
         answers NotAvailable. That part is skipped and the rest is still returned. TokenRejected
-        and CanvasUnreachable are not caught: they stop the sync.
+        and CanvasUnreachable are not caught here: they reach the sync, which
+        reports an unreachable course as missed and goes on to the next one.
 
         Modules come back too, each with its items (S2-02). Files are found three ways and kept
         once each: the Files list, module items of type File, and /files/<id> links in the HTML
@@ -298,14 +306,15 @@ class CanvasConnection:
         course.syllabus = getattr(canvas_course, "syllabus_body", None) or ""
 
         # Step 2: assignments, pages and announcements, each turned into one of ours.
-        canvas_assignments = self._list_or_empty(canvas_course.get_assignments)
+        canvas_assignments = self._list_or_empty("assignments", canvas_course.get_assignments)
         assignments = [self._assignment(a, course) for a in canvas_assignments]
         # The plain page list leaves out each page's body, so ask for it.
-        canvas_pages = self._list_or_empty(lambda: canvas_course.get_pages(include=["body"]))
+        canvas_pages = self._list_or_empty(
+            "pages", lambda: canvas_course.get_pages(include=["body"]))
         pages = [self._page(p, course) for p in canvas_pages]
         # Without a date range Canvas returns only the last 14 days of announcements.
         announcements = [self._announcement(t, course) for t in self._list_or_empty(
-            lambda: canvas.get_announcements(context_codes=[f"course_{course.course_id}"],
+            "announcements", lambda: canvas.get_announcements(context_codes=[f"course_{course.course_id}"],
                                              start_date=ANNOUNCEMENTS_FROM,
                                              end_date=ANNOUNCEMENTS_TO))]
 
@@ -331,10 +340,14 @@ class CanvasConnection:
 
         return [*scan.modules, *assignments, *announcements, *pages, *files]
 
-    def _list_or_empty(self, fn: Callable[[], Iterable[T]]) -> list[T]:
+    def _list_or_empty(self, part: str | None, fn: Callable[[], Iterable[T]]) -> list[T]:
         """Read one whole Canvas list (every page) through _call. A part of the course the
         instructor switched off answers NotAvailable: treat it as empty, so the rest of the
-        course still syncs. (Reporting what was switched off belongs to the coverage report.)"""
+        course still syncs. (Reporting what was switched off belongs to the coverage report.)
+        `part` names what is being read ("files", "pages", ...) for the live progress; None for
+        a read too small to announce."""
+        if part and self.on_part:
+            self.on_part(part)
         try:
             return self._call(lambda: list(fn()))
         except NotAvailable:
@@ -346,8 +359,8 @@ class CanvasConnection:
         modules: list[Module] = []
         file_links: dict[int, tuple[str, str]] = {}
         page_slugs: list[str] = []
-        for canvas_module in self._list_or_empty(canvas_course.get_modules):
-            items = self._list_or_empty(canvas_module.get_module_items)
+        for canvas_module in self._list_or_empty("modules", canvas_course.get_modules):
+            items = self._list_or_empty(None, canvas_module.get_module_items)
             modules.append(Module(
                 item_id=canvas_module.id, title=getattr(canvas_module, "name", ""),
                 course_code=course.code,
@@ -428,7 +441,7 @@ class CanvasConnection:
         found: dict[int, CourseFile] = {}
 
         # 1. The Files list. Empty when the instructor hides the Files tab.
-        for f in self._list_or_empty(canvas_course.get_files):
+        for f in self._list_or_empty("files", canvas_course.get_files):
             found.setdefault(f.id, self._course_file(f, course, "files"))
 
         # 2 and 3 give only a file id (and maybe a title). file id -> (where, title)
