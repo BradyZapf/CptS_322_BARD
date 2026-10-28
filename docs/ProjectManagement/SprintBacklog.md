@@ -40,14 +40,14 @@ One rule is shared by every part: every item gets a first-seen time, and every f
 |---|---|---|---|---|---|
 | S2-01 | Shared format: first-seen time and file status | High | 2 | FR-02, FR-04 | Ryan |
 | S2-02 | Modules sync | High | 3 | FR-02 | Ryan |
-| S2-03 | Report what was blocked | High | 3 | FR-04 | Ryan |
+| S2-03 | Report what was blocked | High | 5 | FR-04 | Ryan |
 | S2-04 | Show what is new since the last sync | High | 2 | FR-04 | Ryan |
 | S2-05 | Slow down when Canvas says the quota is low | Low | 1 | FR-02 | Ryan |
 
 Done when:
 - **S2-01:** every item the sync saves has a first-seen time that stays the same on every later sync, even in a new run; every file has one of the five statuses and a reason; the test fake fills both; the existing tests still pass.
 - **S2-02:** each course's modules are saved with their items in Canvas order; the sync only reads from Canvas; if Canvas refuses the modules, the rest of the course still syncs and the report shows modules as blocked.
-- **S2-03:** the report has one row per course, with each part of the course (files, modules, assignments, pages, announcements) marked ok, empty, blocked or error; a blocked Files tab shows as blocked, not as error, and the report says blocked is normal; below the table only real problems are listed (error cells, failed files, unreadable files), each with its reason.
+- **S2-03:** the report has one row per course, with each part of the course (files, modules, assignments, pages, announcements) marked ok, empty, blocked or error; a blocked Files tab shows as blocked, not as error, and the report says blocked is normal; below the table only real problems are listed (error cells, failed files, unreadable files), each with its reason; while a sync runs, the terminal shows live progress (course, each part, each file, running counts, and skips and failures with a reason) before the report.
 - **S2-04:** the report starts with what is new since the last sync; a fake course with one new file lists that file; a second sync with no changes lists nothing.
 - **S2-05:** when Canvas reports a low remaining quota (`X-Rate-Limit-Remaining`), the sync waits before its next request; a 429 is still retried as it is today; the tests do not wait for real.
 
