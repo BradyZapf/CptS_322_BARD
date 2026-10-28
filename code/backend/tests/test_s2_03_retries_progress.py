@@ -277,7 +277,8 @@ def test_each_part_is_announced_in_the_order_it_is_read():
 
     conn.get_course_items(c)
 
-    assert parts == ["assignments", "pages", "announcements", "files", "modules"]
+    # PR 2 reads the modules before the files (the files step needs what the modules point at)
+    assert parts == ["assignments", "pages", "announcements", "modules", "files"]
 
 
 @responses.activate
@@ -294,7 +295,7 @@ def test_parts_become_progress_lines_after_the_course_line():
 
     assert lines[0] == "Course 1 of 1: FAKE-101"
     assert lines[1:] == [f"  reading {p}..." for p in
-                         ("assignments", "pages", "announcements", "files", "modules")]
+                         ("assignments", "pages", "announcements", "modules", "files")]
 
 
 def test_the_sync_connects_the_connection_to_the_progress(archive):
