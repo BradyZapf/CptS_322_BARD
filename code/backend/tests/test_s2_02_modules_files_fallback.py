@@ -138,14 +138,38 @@ def test_a_module_page_canvas_refuses_is_skipped_and_the_module_still_names_it()
 @responses.activate
 def test_an_external_url_item_pointing_at_a_course_file_is_found():
     c = course(1)
-    serve(c, {10: [canvas_json_module_item(
-        1, title="Reading", kind="ExternalUrl", external_url=f"{URL}/courses/1001/files/8/download")]})
+    serve(c, {10: [
+        canvas_json_module_item(1, title="Reading", kind="ExternalUrl",
+                                external_url=f"{URL}/courses/1001/files/8/download"),
+        canvas_json_module_item(2, title="Relative", kind="ExternalUrl",
+                                external_url="/courses/1001/files/4/download")]})
     responses.get(f"{URL}/api/v1/files/8", json=canvas_json_file(8))
-    responses.get("https://elsewhere.example/x", json={})  # an outside link must never be fetched
+    responses.get(f"{URL}/api/v1/files/4", json=canvas_json_file(4))
 
-    (f,) = of_type(get_items(c), CourseFile)
+    files = of_type(get_items(c), CourseFile)
 
-    assert f.item_id == 8
+    assert sorted(f.item_id for f in files) == [4, 8]
+
+
+@responses.activate
+def test_an_external_url_on_another_site_is_not_followed():
+    c = course(1)
+    serve(c, {10: [canvas_json_module_item(
+        1, title="Elsewhere", kind="ExternalUrl", external_url="https://elsewhere.example/files/9")]})
+    responses.get(f"{URL}/api/v1/files/9", json=canvas_json_file(9))  # would be found if followed
+
+    items = get_items(c)
+
+    assert of_type(items, CourseFile) == []
+    assert not [r for r in responses.calls if r.request.url.endswith("/files/9")]
+
+
+@responses.activate
+def test_a_file_item_without_a_content_id_is_skipped():
+    c = course(1)
+    serve(c, {10: [canvas_json_module_item(1, title="Deleted file")]})  # no content_id
+
+    assert of_type(get_items(c), CourseFile) == []
 
 
 @responses.activate

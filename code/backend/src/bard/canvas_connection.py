@@ -18,6 +18,7 @@ import time
 from collections.abc import Callable, Iterable
 from datetime import datetime, timezone
 from typing import TypeVar
+from urllib.parse import urlparse
 
 import requests
 from canvasapi import Canvas
@@ -323,13 +324,22 @@ class CanvasConnection:
             for item in items:
                 kind, title = getattr(item, "type", ""), getattr(item, "title", "")
                 if kind == "File":
-                    file_links.setdefault(item.content_id, ("modules", title))
+                    if getattr(item, "content_id", None):  # missing when the file was deleted
+                        file_links.setdefault(item.content_id, ("modules", title))
                 elif kind == "ExternalUrl":
-                    for file_id in FILE_LINK.findall(getattr(item, "external_url", "") or ""):
-                        file_links.setdefault(int(file_id), ("modules", title))
+                    link = getattr(item, "external_url", "") or ""
+                    if self._is_own_link(link):
+                        for file_id in FILE_LINK.findall(link):
+                            file_links.setdefault(int(file_id), ("modules", title))
                 elif kind == "Page" and getattr(item, "page_url", ""):
                     page_slugs.append(item.page_url)
         return modules, file_links, page_slugs
+
+    def _is_own_link(self, link: str) -> bool:
+        """True for a link to this Canvas (relative, or the same host). A /files/<id> on another
+        site must not make BARD pull an unrelated file id into this course."""
+        host = urlparse(link).netloc
+        return host == "" or host == urlparse(self.canvas_url).netloc
 
     def _pages_only_in_modules(self, canvas_course: CanvasCourse, course: Course,
                                slugs: list[str], known_slugs: set[str]) -> list[Page]:
