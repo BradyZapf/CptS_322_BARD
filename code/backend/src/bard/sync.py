@@ -79,6 +79,7 @@ class SyncCoursework:
         except CanvasUnreachable as e:  # still failing after every retry
             report.record_missed("course list", str(e))
             return report
+        report.courses = courses
         self.connection.on_part = self.progress.part_started  # "reading pages..." as each part starts
         in_a_row = 0  # courses in a row that Canvas could not answer after every retry
         for number, course in enumerate(courses, start=1):

@@ -2,6 +2,7 @@
 
     python -m bard connect          FR-01  (S1-01)
     python -m bard sync [--term T]  FR-02  (S1-00 + S1-02a, S1-02b)
+    python -m bard coverage [--term T]  FR-04  (S2-03, S2-04)
     python -m bard due              FR-07  (S1-03)
     python -m bard search "late policy"   FR-06  (S1-04)
     python -m bard erase            FR-10  (S1-05)
@@ -14,6 +15,7 @@ import getpass
 import sys
 from datetime import datetime, timezone
 
+from .coverage_report import build_coverage, render
 from .search_index import SearchIndex
 from .sync import SyncCoursework
 from .user import User
@@ -38,6 +40,15 @@ class SyncCourseworkUI:
             return
         report = SyncCoursework(conn, self.user.storage_path, progress=show_progress).sync(term)
         self.display_report(report.summarize())
+
+    def start_coverage(self, term: str | None) -> None:
+        """Sync, then show only the coverage report: what is new, the table, the problems."""
+        conn = self.user.load_connection()
+        if conn is None:
+            print("Not connected yet. Run: python -m bard connect")
+            return
+        report = SyncCoursework(conn, self.user.storage_path).sync(term)
+        print(render(build_coverage(report.courses, report.missed, report.sync_date)))
 
     def display_report(self, summary: str) -> None:
         print(summary)
@@ -69,6 +80,8 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("connect")
     s = sub.add_parser("sync")
     s.add_argument("--term")
+    c = sub.add_parser("coverage")
+    c.add_argument("--term")
     sub.add_parser("due")
     q = sub.add_parser("search")
     q.add_argument("query")
@@ -83,6 +96,8 @@ def main(argv: list[str] | None = None) -> int:
             print("Connected." if user.connect_canvas(url, token) else "Canvas rejected that token.")
         elif a.cmd == "sync":
             SyncCourseworkUI(user).start_sync(a.term)
+        elif a.cmd == "coverage":
+            SyncCourseworkUI(user).start_coverage(a.term)
         elif a.cmd == "due":
             for asg in user.list_upcoming_work(datetime.now(timezone.utc)):
                 due = asg.due_local()
