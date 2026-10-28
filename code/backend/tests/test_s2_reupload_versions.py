@@ -115,3 +115,37 @@ def test_a_failed_download_after_a_reupload_keeps_everything_as_it_was(archive):
     SyncCoursework(FakeConnection({"c1": [f]}, failing_files={5}), archive).sync()
     assert files_in(archive) == {"slides-5.pdf": OLD}
     assert len(SearchIndex(archive / "index.db").search("Slides")) == 0
+
+
+def test_every_exit_of_save_file_reports_exactly_one_file_done(archive, monkeypatch):
+    """Stacked on the progress PR: saved, unchanged, failed download and failed write each
+    call progress.file_done once for the file."""
+    from bard.sync_progress import SyncProgress
+
+    calls = []
+    real_done = SyncProgress.file_done
+    monkeypatch.setattr(SyncProgress, "file_done",
+                        lambda self, f, unchanged=False: (calls.append(f.item_id), real_done(self, f, unchanged))[1])
+
+    def run(f, **options):
+        calls.clear()
+        SyncCoursework(FakeConnection({"c1": [f]}, **options), archive,
+                       progress=lambda line: None).sync()
+        return list(calls)
+
+    def sized(f, data):
+        f.size = len(data)
+        return f
+
+    assert run(sized(slides(day(20)), OLD), file_bytes=OLD) == [5]  # saved
+    assert run(sized(slides(day(20)), OLD), file_bytes=OLD) == [5]  # unchanged
+    assert run(sized(slides(day(22)), NEW), failing_files={5}) == [5]  # failed download
+
+    real = Path.write_bytes
+
+    def dies(self, data):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(Path, "write_bytes", dies)
+    assert run(sized(slides(day(23)), NEWER), file_bytes=NEWER) == [5]  # failed write
+    monkeypatch.setattr(Path, "write_bytes", real)
