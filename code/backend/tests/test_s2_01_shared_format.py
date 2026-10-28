@@ -3,10 +3,13 @@ and a reason (FR-02, FR-04). The other Sprint 2 parts read these fields."""
 
 from datetime import datetime, timedelta, timezone
 
+import responses
+
+from bard.canvas_connection import CanvasConnection
 from bard.models import FileStatus, Page
 from bard.search_index import SearchIndex
 from bard.sync import SyncCoursework
-from fakes import FIRST_SEEN, FakeConnection, assignment, pdf, seen
+from fakes import FIRST_SEEN, TOKEN, URL, FakeConnection, assignment, pdf, seen
 
 
 def sync_files(archive, **fake_options):
@@ -88,3 +91,35 @@ def test_the_fake_can_build_a_file_as_a_finished_sync_leaves_it():
 
 def test_status_names_are_the_five_in_the_spec():
     assert [s.value for s in FileStatus] == ["saved", "blocked", "locked", "failed", "unreadable"]
+
+
+def test_a_missing_file_is_blocked_like_a_forbidden_one(archive):
+    f = sync_files(archive, missing_files={1})[1]
+    assert (f.status, f.status_reason) == (FileStatus.BLOCKED, "not found (404)")
+
+
+def test_status_prints_as_its_plain_text():
+    assert str(FileStatus.SAVED) == "saved"
+    assert f"{FileStatus.LOCKED}" == "locked"
+
+
+def test_a_naive_time_is_stored_as_utc(tmp_path):
+    page = Page(item_id=1, title="Welcome", course_code="FAKE-101")
+    SearchIndex(tmp_path / "index.db").stamp_first_seen(page, datetime(2026, 9, 1, 12, 0))
+    assert page.first_seen.utcoffset() == timedelta(0)
+
+
+class RealConnectionDownloads(FakeConnection):
+    """Lists files from memory, but downloads through the real CanvasConnection."""
+
+    def fetch_file(self, file_id: int) -> bytes:
+        return CanvasConnection(URL, TOKEN).fetch_file(file_id)
+
+
+@responses.activate
+def test_the_real_locked_answer_gives_status_locked(archive):
+    # Canvas describes the file but leaves the download link empty (as in test_s1_02a).
+    responses.get(f"{URL}/api/v1/files/1", json={"id": 1, "display_name": "slides1.pdf", "url": "", "locked": True})
+    f = pdf(1)
+    SyncCoursework(RealConnectionDownloads({"c1": [f]}), archive).sync()
+    assert f.status == FileStatus.LOCKED

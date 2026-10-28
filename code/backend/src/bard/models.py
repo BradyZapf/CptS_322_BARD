@@ -13,7 +13,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 
 
@@ -37,8 +37,8 @@ class Course:
         )
 
 
-class FileStatus(str, Enum):
-    """What happened to one file (S2-01). Blocked and locked are the instructor's choice, so the
+class FileStatus(StrEnum):
+    """What happened to one file (S2-01). Prints and compares as its plain text, e.g. "saved". Blocked and locked are the instructor's choice, so the
     report counts them as normal. Failed and unreadable are problems and are listed with a reason."""
 
     SAVED = "saved"  # downloaded and in the archive

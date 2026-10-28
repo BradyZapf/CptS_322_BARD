@@ -12,7 +12,13 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from .canvas_connection import CanvasConnection, CanvasUnreachable, NotAvailable, TokenRejected
+from .canvas_connection import (
+    LOCKED_REASON,
+    CanvasConnection,
+    CanvasUnreachable,
+    NotAvailable,
+    TokenRejected,
+)
 from .models import Course, CourseFile, CourseItem, FileStatus
 from .search_index import SearchIndex
 from .sync_report import SyncReport
@@ -105,8 +111,7 @@ class SyncCoursework:
         try:
             data = self.connection.fetch_file(f.item_id)
         except NotAvailable as e:
-            # CanvasConnection words a missing download link as "locked by the instructor"
-            f.status = FileStatus.LOCKED if e.reason.startswith("locked") else FileStatus.BLOCKED
+            f.status = FileStatus.LOCKED if e.reason == LOCKED_REASON else FileStatus.BLOCKED
             f.status_reason = e.reason
             report.record_missed(f.file_name or f.title, e.reason)
             return

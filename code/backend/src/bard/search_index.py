@@ -62,7 +62,7 @@ class SearchIndex:
     def stamp_first_seen(self, item: CourseItem, now: datetime | None = None) -> None:
         """S2-01. Set item.first_seen. The first call for an item stores `now`; later calls, even
         in a new run, read it back and never change it ("insert or ignore")."""
-        now = now or datetime.now(timezone.utc)
+        now = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)  # always aware UTC
         db = self._connect()
         try:
             with db:
