@@ -12,6 +12,8 @@ from fakes import (
     TOKEN,
     URL,
     FakeConnection,
+    canvas_json_announcement,
+    canvas_json_assignments,
     canvas_json_file,
     canvas_json_module_item,
     canvas_json_page,
@@ -212,3 +214,27 @@ def test_a_blocked_module_file_is_saved_as_blocked_and_the_rest_of_the_module_sy
     assert (ok.status, blocked.status) == (FileStatus.SAVED, FileStatus.BLOCKED)
     assert (archive / "FAKE-101" / "modules" / "Week 1-10.md").exists()
     assert report.missed and "forbidden" in report.missed[0][1]
+
+
+@responses.activate
+def test_links_in_course_text_are_followed_only_when_relative_or_on_this_canvas():
+    """Assignment, page and announcement text: relative and own-host links are fetched; a link to
+    another site that contains /files/<id> is never asked for."""
+    c = course(1)
+    base = f"{URL}/api/v1/courses/{c.course_id}"
+    serve(c, {}, pages=[canvas_json_page(
+        7, "Links", f'<a href="https://elsewhere.example/files/9">x</a> <a href="{URL}/courses/1/files/2/download">y</a>')],
+        pages_tab="ok")
+    hw = canvas_json_assignments(1)[0]
+    hw["description"] = '<a href="/courses/1001/files/1/download">relative</a>'
+    responses.replace(responses.GET, f"{base}/assignments", json=[hw])
+    responses.replace(responses.GET, f"{URL}/api/v1/announcements", json=[canvas_json_announcement(
+        3, message='<img src="//elsewhere.example/files/8"><a href="/files/3">notes</a>')])
+    for i in (1, 2, 3, 8, 9):
+        responses.get(f"{URL}/api/v1/files/{i}", json=canvas_json_file(i))
+
+    ids = sorted(f.item_id for f in of_type(get_items(c), CourseFile))
+
+    assert ids == [1, 2, 3]
+    asked = [r.request.url for r in responses.calls]
+    assert not [u for u in asked if u.endswith("/files/9") or u.endswith("/files/8")]

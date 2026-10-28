@@ -52,6 +52,8 @@ ANNOUNCEMENTS_TO = "2100-01-01"
 
 # How course HTML links to a file: /courses/1/files/123/download, /files/123/preview, ...
 FILE_LINK = re.compile(r"/files/(\d+)")
+# The same, with the start of the link kept (up to a space, quote, bracket or "=") so the host can be checked.
+FILE_URL = re.compile(r"""([^\s"'<>()=]*)/files/(\d+)""")
 
 
 class TokenRejected(Exception):
@@ -335,6 +337,12 @@ class CanvasConnection:
                     page_slugs.append(item.page_url)
         return modules, file_links, page_slugs
 
+    def _own_file_ids(self, text: str) -> list[int]:
+        """File ids in `text` (HTML) whose link is relative or on this Canvas. A link to another
+        site that happens to contain /files/<id> is not ours, so that id is never asked for."""
+        return [int(file_id) for start, file_id in FILE_URL.findall(text)
+                if self._is_own_link(f"{start}/files/{file_id}")]
+
     def _is_own_link(self, link: str) -> bool:
         """True for a link to this Canvas (relative, or the same host). A /files/<id> on another
         site must not make BARD pull an unrelated file id into this course."""
@@ -373,8 +381,8 @@ class CanvasConnection:
         linked: dict[int, tuple[str, str]] = dict(module_links)  # 2. modules
         # 3. Links in the HTML of assignments, pages, announcements and the syllabus.
         for where, text in html:
-            for file_id in FILE_LINK.findall(text):
-                linked.setdefault(int(file_id), (where, ""))
+            for file_id in self._own_file_ids(text):
+                linked.setdefault(file_id, (where, ""))
 
         for file_id, (where, title) in linked.items():
             if file_id not in found:
