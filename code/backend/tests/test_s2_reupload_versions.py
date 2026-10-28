@@ -2,8 +2,9 @@
 both are found by search; the same bytes sent again make no second copy."""
 
 from datetime import datetime, timezone
+from pathlib import Path
 
-from bard.models import CourseFile
+from bard.models import CourseFile, FileStatus
 from bard.search_index import SearchIndex
 from bard.sync import SyncCoursework
 from fakes import FakeConnection
@@ -66,6 +67,8 @@ def test_search_finds_both_and_marks_the_earlier_one(archive):
     sources = sorted(h.source() for h in hits)
     assert sources == ["FAKE-101 / Slides", "FAKE-101 / Slides (earlier version)"]
     earlier = next(h for h in hits if "earlier" in h.source())
+    current = next(h for h in hits if h is not earlier)
+    assert current.item.local_path == "FAKE-101/files/slides-5.pdf"
     assert earlier.item.local_path == "FAKE-101/files/slides-5 (earlier 2026-10-20).pdf"
 
 
@@ -83,3 +86,32 @@ def test_an_unchanged_resync_leaves_everything_alone(archive):
     before = files_in(archive)
     sync_once(archive, day(22), NEW)
     assert files_in(archive) == before
+
+
+def test_a_failed_write_keeps_the_old_copy_and_records_the_file_as_missed(archive, monkeypatch):
+    sync_once(archive, day(20), OLD)
+    real = Path.write_bytes
+
+    def dies_after_three_bytes(self, data):
+        real(self, data[:3])
+        raise OSError("disk full")
+
+    monkeypatch.setattr(Path, "write_bytes", dies_after_three_bytes)
+    f = slides(day(22))
+    f.size = len(NEW)
+    report = SyncCoursework(FakeConnection({"c1": [f]}, file_bytes=NEW), archive).sync()
+    assert files_in(archive) == {"slides-5.pdf": OLD}  # no stub, no earlier copy
+    assert f.status == FileStatus.FAILED and "disk full" in f.status_reason
+    assert [name for name, _ in report.missed] == ["slides.pdf"]
+    monkeypatch.undo()
+    sync_once(archive, day(22), NEW)  # the next sync works normally
+    assert files_in(archive) == {"slides-5.pdf": NEW, "slides-5 (earlier 2026-10-20).pdf": OLD}
+
+
+def test_a_failed_download_after_a_reupload_keeps_everything_as_it_was(archive):
+    sync_once(archive, day(20), OLD)
+    f = slides(day(22))
+    f.size = len(NEW)
+    SyncCoursework(FakeConnection({"c1": [f]}, failing_files={5}), archive).sync()
+    assert files_in(archive) == {"slides-5.pdf": OLD}
+    assert len(SearchIndex(archive / "index.db").search("Slides")) == 0

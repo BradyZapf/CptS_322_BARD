@@ -8,6 +8,7 @@ was last changed on Canvas (the timestamp the sync stored on the file).
 
 from __future__ import annotations
 
+import os
 import zlib
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -15,7 +16,7 @@ from pathlib import Path
 
 from .models import CourseFile
 
-EARLIER_MARK = "earlier version"  # shown in search results, e.g. "Slides 5 (earlier version)"
+EARLIER_MARK = "earlier version"  # shown in search results, e.g. "Slides (earlier version)"
 
 
 @dataclass
@@ -36,14 +37,37 @@ def earlier_path(path: Path) -> Path:
     return candidate
 
 
-def keep_earlier_version(path: Path, new_bytes: bytes) -> Path | None:
-    """Call before writing `new_bytes` to `path`. If a different copy is already there, move it
-    aside and return its new path. If there is none, or the bytes are identical, change nothing
-    and return None (the same bytes sent again make no second copy)."""
-    if not path.exists() or path.read_bytes() == new_bytes:
-        return None
-    kept = earlier_path(path)
-    path.rename(kept)
+def _is_different(path: Path, new_bytes: bytes) -> bool:
+    """True if a copy is already at `path` and it is not byte-for-byte `new_bytes`. Sizes are
+    compared first, so the old file is only read when it could be the same."""
+    if not path.exists():
+        return False
+    return path.stat().st_size != len(new_bytes) or path.read_bytes() != new_bytes
+
+
+def save_keeping_earlier(path: Path, data: bytes, updated_at: datetime | None) -> Path | None:
+    """Save `data` at `path`; if a different copy was there, keep it as an earlier version and
+    return its new path (None if nothing was kept: first upload, or the same bytes again).
+
+    The new bytes go to a temp file first, so a failed write leaves the old copy untouched and
+    no half-written file that a later sync would keep as an "earlier version". Raises OSError
+    (after cleaning up) if the write fails; the caller records the file as missed.
+    `updated_at` is Canvas's timestamp, stored as the file's mtime so is_unchanged() can compare."""
+    tmp = path.with_name(path.name + ".part")
+    kept = None
+    try:
+        tmp.write_bytes(data)
+        if updated_at:
+            os.utime(tmp, (updated_at.timestamp(), updated_at.timestamp()))
+        if _is_different(path, data):
+            kept = earlier_path(path)
+            path.rename(kept)
+        os.replace(tmp, path)
+    except OSError:
+        tmp.unlink(missing_ok=True)
+        if kept and not path.exists():
+            kept.rename(path)  # put the old copy back
+        raise
     return kept
 
 
