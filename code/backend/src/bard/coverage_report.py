@@ -115,7 +115,10 @@ def build_coverage(courses: list[Course], missed: list[tuple[str, str]], sync_st
                 row[part] = Outcome.NOT_ASKED if part == "modules" else Outcome.EMPTY
             if (course.code, part) in part_outcomes:
                 outcome, reason = part_outcomes[(course.code, part)]
-                row[part] = Outcome(outcome)  # the sync passes plain strings
+                try:
+                    row[part] = Outcome(outcome)  # the sync passes plain strings
+                except ValueError:  # an outcome nobody knows: show an error, keep what was said
+                    row[part], reason = Outcome.ERROR, f"unknown outcome {outcome!r}: {reason}"
                 if row[part] is Outcome.ERROR:
                     cov.problems.append(Problem(course.code, part, reason))
         cov.cells[course.code] = row

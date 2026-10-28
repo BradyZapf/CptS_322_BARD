@@ -20,6 +20,7 @@ from .canvas_connection import (
     NotAvailable,
     TokenRejected,
 )
+from .coverage_report import part_of
 from .models import Course, CourseFile, CourseItem, FileStatus
 from .search_index import SearchIndex
 from .sync_progress import SyncProgress
@@ -119,8 +120,8 @@ class SyncCoursework:
         results = getattr(self.connection, "part_results", None) or {}
         for part, result in results.items():
             if result.startswith("blocked"):
-                if part == "files" and any(isinstance(i, CourseFile) for i in items):
-                    continue  # files found another way: the cell stays derived from them
+                if part in {part_of(i) for i in items}:
+                    continue  # found another way (files and pages via modules, links, syllabus): ok
                 report.part_outcomes[(course.code, part)] = ("blocked", result.removeprefix("blocked: "))
             elif part == "modules" and result == "empty":
                 report.part_outcomes[(course.code, part)] = ("empty", "")

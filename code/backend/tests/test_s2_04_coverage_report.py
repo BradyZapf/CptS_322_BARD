@@ -248,7 +248,7 @@ import responses  # noqa: E402
 
 from bard import canvas_connection  # noqa: E402
 from bard.canvas_connection import CanvasConnection, CanvasUnreachable, NotAvailable  # noqa: E402
-from fakes import TOKEN, URL  # noqa: E402
+from fakes import TOKEN, URL, canvas_json_module_item, canvas_json_page  # noqa: E402
 from test_s2_02_modules_files_fallback import BLOCKED, serve  # noqa: E402
 
 
@@ -320,3 +320,30 @@ def test_progress_missed_reasons_classify_by_their_ending(archive):
     assert any("not accessible" in r for r in rows)
     assert any("error: " in r for r in rows)
     assert any("whole course" in p and "cannot reach" in p for p in section(text, "Problems"))
+
+
+@responses.activate
+def test_pages_found_through_modules_read_ok_when_the_pages_tab_is_blocked(archive, no_waiting):
+    c = course(1)
+    serve(c, {10: [canvas_json_module_item(1, kind="Page", page_url="hidden")]}, pages_tab="blocked")
+    responses.get(f"{URL}/api/v1/courses/{c.course_id}/pages/hidden", json=canvas_json_page(9, "Notes"))
+    report = SyncCoursework(OneCourse([c]), archive).sync()
+    text = render(build_coverage(report.courses, report.missed, report.sync_date, report.part_outcomes))
+    assert table_row(text, "FAKE-101")[4] == "ok"  # files, modules, assignments, PAGES
+
+
+@responses.activate
+def test_a_blocked_pages_tab_with_no_pages_found_still_reads_blocked(archive, no_waiting):
+    c = course(1)
+    serve(c, {}, pages_tab="blocked")
+    report = SyncCoursework(OneCourse([c]), archive).sync()
+    text = render(build_coverage(report.courses, report.missed, report.sync_date, report.part_outcomes))
+    assert table_row(text, "FAKE-101")[4] == "blocked"
+
+
+def test_an_unknown_outcome_shows_as_an_error_with_its_text_kept():
+    c = course(1)
+    text = render(build_coverage([c], [], datetime.now(timezone.utc),
+                                 {(c.code, "pages"): ("weird", "no idea")}))
+    assert table_row(text, "FAKE-101")[4] == "error"
+    assert section(text, "Problems") == ["  FAKE-101  pages: unknown outcome 'weird': no idea"]
