@@ -127,9 +127,10 @@ def canvas_json_file(file_id: int, name: str | None = None, size: int = 1000) ->
 
 
 def canvas_json_module_item(item_id: int, file_id: int | None = None, title: str = "Notes",
-                            kind: str = "File") -> dict:
-    """One entry in a module. For kind="File", content_id is the file's id."""
-    item = {"id": item_id, "type": kind, "title": title}
+                            kind: str = "File", **more) -> dict:
+    """One entry in a module. For kind="File", content_id is the file's id. `more` adds the
+    other fields Canvas sends: page_url (Page), external_url (ExternalUrl), indent."""
+    item = {"id": item_id, "type": kind, "title": title, **more}
     if file_id is not None:
         item["content_id"] = file_id
     return item

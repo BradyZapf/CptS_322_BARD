@@ -37,7 +37,7 @@ from canvasapi.exceptions import (
 from canvasapi.file import File as CanvasFile
 from canvasapi.page import Page as CanvasPage
 
-from .models import Announcement, Assignment, Course, CourseFile, CourseItem, Page
+from .models import Announcement, Assignment, Course, CourseFile, CourseItem, Module, ModuleItem, Page
 
 T = TypeVar("T")
 
@@ -250,9 +250,10 @@ class CanvasConnection:
         answers NotAvailable. That part is skipped and the rest is still returned. TokenRejected
         and CanvasUnreachable are not caught: they stop the sync.
 
-        Files are found three ways and kept once each: the Files list, module items of type
-        File, and /files/<id> links in the HTML of assignments, pages, announcements and the
-        syllabus. A course's syllabus comes back as a Page called "Syllabus".
+        Modules come back too, each with its items (S2-02). Files are found three ways and kept
+        once each: the Files list, module items of type File, and /files/<id> links in the HTML
+        of assignments, pages, announcements and the syllabus. A page that only a module names
+        is fetched too. A course's syllabus comes back as a Page called "Syllabus".
         """
         canvas = self._client()
 
@@ -266,29 +267,34 @@ class CanvasConnection:
         assignments = [self._assignment(a, course)
                        for a in self._list_or_empty(canvas_course.get_assignments)]
         # The plain page list leaves out each page's body, so ask for it.
-        pages = [self._page(p, course)
-                 for p in self._list_or_empty(lambda: canvas_course.get_pages(include=["body"]))]
+        canvas_pages = self._list_or_empty(lambda: canvas_course.get_pages(include=["body"]))
+        pages = [self._page(p, course) for p in canvas_pages]
         # Without a date range Canvas returns only the last 14 days of announcements.
         announcements = [self._announcement(t, course) for t in self._list_or_empty(
             lambda: canvas.get_announcements(context_codes=[f"course_{course.course_id}"],
                                              start_date=ANNOUNCEMENTS_FROM,
                                              end_date=ANNOUNCEMENTS_TO))]
 
-        # Step 3: files, from the three places they can be found.
+        # Step 3: modules (S2-02). Their Page items may name pages the Pages list did not give.
+        modules, module_links, module_page_slugs = self._modules(canvas_course, course)
+        pages += self._pages_only_in_modules(canvas_course, course, module_page_slugs,
+                                             known_slugs={p.url for p in canvas_pages})
+
+        # Step 4: files, from the places they can be found.
         html: list[tuple[str, str]] = [
             *((f"assignment {a.item_id}", a.description) for a in assignments),
             *((f"page {p.item_id}", p.body) for p in pages),
             *((f"announcement {t.item_id}", t.body) for t in announcements),
             ("syllabus", course.syllabus),
         ]
-        files = self._files(canvas, canvas_course, course, html)
+        files = self._files(canvas, canvas_course, course, html, module_links)
 
         # The syllabus is often the only place exam dates are written, so save it like a page.
         if course.syllabus:
             pages.append(Page(item_id=course.course_id, title="Syllabus", course_code=course.code,
                               body=course.syllabus))
 
-        return [*assignments, *announcements, *pages, *files]
+        return [*modules, *assignments, *announcements, *pages, *files]
 
     def _list_or_empty(self, fn: Callable[[], Iterable[T]]) -> list[T]:
         """Read one whole Canvas list (every page) through _call. A part of the course the
@@ -299,10 +305,54 @@ class CanvasConnection:
         except NotAvailable:
             return []
 
+    def _modules(self, canvas_course: CanvasCourse, course: Course
+                 ) -> tuple[list[Module], dict[int, tuple[str, str]], list[str]]:
+        """S2-02. Every module with its items in Canvas's order, read once. Also returns what the
+        modules point at: files as file id -> ("modules", title) (File items by content_id, and
+        /files/<id> links in ExternalUrl items), and the url slug of every Page item."""
+        modules: list[Module] = []
+        file_links: dict[int, tuple[str, str]] = {}
+        page_slugs: list[str] = []
+        for canvas_module in self._list_or_empty(canvas_course.get_modules):
+            items = self._list_or_empty(canvas_module.get_module_items)
+            modules.append(Module(
+                item_id=canvas_module.id, title=getattr(canvas_module, "name", ""),
+                course_code=course.code,
+                items=[ModuleItem(title=getattr(i, "title", ""), item_type=getattr(i, "type", ""),
+                                  indent=getattr(i, "indent", 0) or 0) for i in items]))
+            for item in items:
+                kind, title = getattr(item, "type", ""), getattr(item, "title", "")
+                if kind == "File":
+                    file_links.setdefault(item.content_id, ("modules", title))
+                elif kind == "ExternalUrl":
+                    for file_id in FILE_LINK.findall(getattr(item, "external_url", "") or ""):
+                        file_links.setdefault(int(file_id), ("modules", title))
+                elif kind == "Page" and getattr(item, "page_url", ""):
+                    page_slugs.append(item.page_url)
+        return modules, file_links, page_slugs
+
+    def _pages_only_in_modules(self, canvas_course: CanvasCourse, course: Course,
+                               slugs: list[str], known_slugs: set[str]) -> list[Page]:
+        """A module can show a page the Pages list did not give (Pages tab switched off). A module
+        Page item carries only the page's url slug, so fetch each slug not already known. A page
+        Canvas refuses is skipped; the module still names it."""
+        found: list[Page] = []
+        for slug in slugs:
+            if slug in known_slugs:
+                continue
+            known_slugs.add(slug)
+            try:
+                canvas_page = self._call(lambda slug=slug: canvas_course.get_page(slug))
+            except NotAvailable:
+                continue
+            found.append(self._page(canvas_page, course))
+        return found
+
     def _files(self, canvas: Canvas, canvas_course: CanvasCourse, course: Course,
-               html: list[tuple[str, str]]) -> list[CourseFile]:
+               html: list[tuple[str, str]], module_links: dict[int, tuple[str, str]]) -> list[CourseFile]:
         """Every file in the course, once each. `html` is (where, text) for every item whose
-        text may link to a file. linked_from says where each file was seen first."""
+        text may link to a file; `module_links` is what the modules point at. linked_from says
+        where each file was seen first."""
         found: dict[int, CourseFile] = {}
 
         # 1. The Files list. Empty when the instructor hides the Files tab.
@@ -310,12 +360,7 @@ class CanvasConnection:
             found.setdefault(f.id, self._course_file(f, course, "files"))
 
         # 2 and 3 give only a file id (and maybe a title). file id -> (where, title)
-        linked: dict[int, tuple[str, str]] = {}
-        # 2. Module items of type File. content_id is the file's id.
-        for module in self._list_or_empty(canvas_course.get_modules):
-            for item in self._list_or_empty(module.get_module_items):
-                if getattr(item, "type", "") == "File":
-                    linked.setdefault(item.content_id, ("modules", getattr(item, "title", "")))
+        linked: dict[int, tuple[str, str]] = dict(module_links)  # 2. modules
         # 3. Links in the HTML of assignments, pages, announcements and the syllabus.
         for where, text in html:
             for file_id in FILE_LINK.findall(text):

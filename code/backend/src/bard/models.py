@@ -122,6 +122,27 @@ class Page(CourseItem):
 
 
 @dataclass
+class ModuleItem:
+    """One entry in a module: a file, page, assignment, link or heading. Not a CourseItem; it is
+    saved inside its Module."""
+
+    title: str
+    item_type: str  # Canvas's own word: "File", "Page", "Assignment", "ExternalUrl", "SubHeader", ...
+    indent: int = 0  # how far Canvas indents it under a heading
+
+
+@dataclass
+class Module(CourseItem):
+    """A module (S2-02). `items` stay in the order Canvas gives them."""
+
+    items: list[ModuleItem] = field(default_factory=list)
+
+    def to_text(self) -> str:
+        lines = [f"{'  ' * i.indent}- {i.title} ({i.item_type})" for i in self.items]
+        return f"# {self.title}\n\n" + "\n".join(lines) + "\n"
+
+
+@dataclass
 class CourseFile(CourseItem):
     """A file (PDF, slides, ...). The original is kept; its text goes in text_path beside it."""
 
