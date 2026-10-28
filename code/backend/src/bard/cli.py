@@ -19,6 +19,11 @@ from .sync import SyncCoursework
 from .user import User
 
 
+def show_progress(line: str) -> None:
+    """S2-03. Progress goes to stderr, so `bard sync > report.txt` keeps it out of the report."""
+    print(line, file=sys.stderr, flush=True)
+
+
 class SyncCourseworkUI:
     """SyncCourseworkUI: starts a sync (startSync) and shows the report (displayReport)."""
 
@@ -30,7 +35,7 @@ class SyncCourseworkUI:
         if conn is None:
             print("Not connected yet. Run: python -m bard connect")
             return
-        report = SyncCoursework(conn, self.user.storage_path).sync(term)
+        report = SyncCoursework(conn, self.user.storage_path, progress=show_progress).sync(term)
         self.display_report(report.summarize())
 
     def display_report(self, summary: str) -> None:

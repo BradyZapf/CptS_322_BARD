@@ -10,7 +10,7 @@ from this table, so add a row when you add either.
 | Req | User story | Use case | Classes | Gherkin (`features/`) | Test | Spec |
 |---|---|---|---|---|---|---|
 | FR-01 | Connecting a Canvas account | Connect Canvas account, Verify token | User, CanvasConnection | connecting_a_canvas_account | test_s1_01_connect | S1-01 |
-| FR-02 | Complete download of a course | Sync coursework | SyncCoursework, CanvasConnection, Course, CourseItem | complete_download_of_a_course | test_s1_00_sync, test_s1_02b_course_contents, test_s2_01_shared_format, test_s2_02_modules_files_fallback | S1-00, S1-02a, S1-02b, S2-01, S2-02 |
+| FR-02 | Complete download of a course | Sync coursework | SyncCoursework, CanvasConnection, Course, CourseItem | complete_download_of_a_course | test_s1_00_sync, test_s1_02b_course_contents, test_s2_01_shared_format, test_s2_02_modules_files_fallback, test_s2_03_retries_progress | S1-00, S1-02a, S1-02b, S2-01, S2-02, S2-03 |
 | FR-03 | Files linked inside a course | Collect linked files | CanvasConnection, CourseFile | files_linked_inside_a_course | test_s1_02a_canvas_plumbing, test_s1_02b_course_contents | S1-02a, S1-02b |
 | FR-04 | Coverage report | Report coverage | SyncReport | coverage_report | test_s1_00_sync (part) | S1-00 |
 | FR-05 | Deadlines in my own timezone | View upcoming work | Assignment | deadlines_in_my_own_timezone | test_s1_03_upcoming | S1-03 |

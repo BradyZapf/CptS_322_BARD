@@ -10,6 +10,7 @@ It only calls other classes, so the tests run it with a fake CanvasConnection.
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from pathlib import Path
 
 from .canvas_connection import (
@@ -21,6 +22,7 @@ from .canvas_connection import (
 )
 from .models import Course, CourseFile, CourseItem, FileStatus
 from .search_index import SearchIndex
+from .sync_progress import SyncProgress
 from .sync_report import SyncReport
 
 WINDOWS_RESERVED = {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)),
@@ -47,7 +49,10 @@ def unique_name(name: str, item_id: int) -> str:
 
 
 class SyncCoursework:
-    def __init__(self, connection: CanvasConnection, archive_dir: str | os.PathLike):
+    def __init__(self, connection: CanvasConnection, archive_dir: str | os.PathLike,
+                 progress: Callable[[str], None] | None = None):
+        """`progress` gets one line of text at a time while the sync runs (S2-03)."""
+        self.progress = SyncProgress(progress)
         self.connection = connection
         self.archive = Path(archive_dir)
         self.index = SearchIndex(self.archive / "index.db")
@@ -68,19 +73,27 @@ class SyncCoursework:
         except (TokenRejected, NotAvailable) as e:
             report.record_missed("course list", getattr(e, "reason", "Canvas rejected the access token"))
             return report
-        for course in courses:
+        except CanvasUnreachable as e:  # still failing after every retry
+            report.record_missed("course list", str(e))
+            return report
+        for number, course in enumerate(courses, start=1):
+            self.progress.course_started(course, number, len(courses))
             # getCourseItems(course): every page of results (sequence diagram)
             try:
                 items = self.connection.get_course_items(course)
-            except NotAvailable as e:
-                report.record_missed(course.code, e.reason)
+            except (NotAvailable, CanvasUnreachable) as e:
+                reason = e.reason if isinstance(e, NotAvailable) else str(e)
+                report.record_missed(course.code, reason)
+                self.progress.course_skipped(course, reason)
                 continue
+            self.progress.items_found(items)
             for item in items:
                 if isinstance(item, CourseFile):
                     self._save_file(course, item, report)  # 1.1.3.1.1 createCourseFile
                 else:
                     self._save_text(course, item, report)  # an assignment, page or announcement
                 course.items.append(item)
+            self.progress.course_finished()
 
         # 1.1.4 summarize() happens in the UI, which calls report.summarize()
         return report
@@ -106,6 +119,7 @@ class SyncCoursework:
             f.local_path = path.relative_to(self.archive).as_posix()
             f.status, f.status_reason = FileStatus.SAVED, "unchanged since the last sync"
             self.index.stamp_first_seen(f)
+            self.progress.file_done(f, unchanged=True)
             return
         # alt [new or changed]: fetchFile(fileId)
         try:
@@ -114,10 +128,12 @@ class SyncCoursework:
             f.status = FileStatus.LOCKED if e.reason == LOCKED_REASON else FileStatus.BLOCKED
             f.status_reason = e.reason
             report.record_missed(f.file_name or f.title, e.reason)
+            self.progress.file_done(f)
             return
         except CanvasUnreachable as e:
             f.status, f.status_reason = FileStatus.FAILED, str(e)
             report.record_missed(f.file_name or f.title, str(e))
+            self.progress.file_done(f)
             return
         path.write_bytes(data)
         if f.updated_at:  # remember Canvas's timestamp, so is_unchanged() can compare next time
@@ -126,4 +142,5 @@ class SyncCoursework:
         f.status, f.status_reason = FileStatus.SAVED, "downloaded"
         self.index.stamp_first_seen(f)
         report.record_saved(f.local_path)
+        self.progress.file_done(f)
         # Planned for a later sprint: call f.extract_text(path) here to write the text beside the original.

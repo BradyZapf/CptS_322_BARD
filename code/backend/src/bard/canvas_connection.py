@@ -45,6 +45,11 @@ T = TypeVar("T")
 MAX_TRIES = 5        # one first try plus four retries
 FIRST_WAIT = 1.0     # seconds; doubles after every failed try (1, 2, 4, 8)
 REQUEST_TIMEOUT = 30  # seconds; a Canvas that has not answered by then counts as broken
+# Canvas gives each token a quota (about 700 "units") and reports what is left in the
+# X-Rate-Limit-Remaining header of every answer. Below LOW_QUOTA the next request waits first.
+QUOTA_HEADER = "X-Rate-Limit-Remaining"
+LOW_QUOTA = 100.0
+QUOTA_WAIT = 2.0     # seconds; the quota refills over time, so a short pause is enough
 
 # Announcements: Canvas's default window is only the last 14 days, so ask for the whole course.
 ANNOUNCEMENTS_FROM = "2000-01-01"
@@ -109,6 +114,7 @@ class CanvasConnection:
         self.canvas_url = canvas_url.rstrip("/")
         self._access_token = access_token  # leading underscore = private ("-" in the UML)
         self.last_synced: datetime | None = None
+        self._quota_low = False  # set when the last answer said the quota is nearly used up
 
     def _client(self) -> Canvas:
         """A canvasapi client for this URL and token. Only GET calls are ever made through it."""
@@ -119,8 +125,26 @@ class CanvasConnection:
         # private attribute (Python renames `__requester` to `_Canvas__requester`); give that
         # session's requests a default timeout. Files downloaded later share this session.
         session = canvas._Canvas__requester._session
-        session.request = functools.partial(session.request, timeout=REQUEST_TIMEOUT)
+        send = functools.partial(session.request, timeout=REQUEST_TIMEOUT)
+
+        def send_politely(*args, **kwargs):
+            """S2-05. Every request, including file downloads, passes through here."""
+            if self._quota_low:
+                self._quota_low = False  # the next answer sets it again if still low
+                _sleep(QUOTA_WAIT)
+            response = send(*args, **kwargs)
+            self._note_quota(response)
+            return response
+
+        session.request = send_politely
         return canvas
+
+    def _note_quota(self, response: requests.Response) -> None:
+        """Remember whether Canvas says the quota is low. A missing or odd header is ignored."""
+        try:
+            self._quota_low = float(response.headers[QUOTA_HEADER]) < LOW_QUOTA
+        except (KeyError, ValueError):
+            self._quota_low = False
 
     def _scrub(self, text: str) -> str:
         """Remove the access token from text that may leave this object."""
