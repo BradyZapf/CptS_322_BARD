@@ -1,4 +1,4 @@
-# S2-D Errors, erase, guide file and test fake: validation
+# S2-D Errors, connect, erase, guide file and test fake: validation
 
 Done means all of these are true. The pull request template has the checklist to tick.
 
@@ -8,8 +8,10 @@ Done means all of these are true. The pull request template has the checklist to
 - `docs/TraceabilityMatrix.md` has a row for each new test file, so the traceability check passes
 - Every acceptance criterion in requirements.md is ticked
 - Each Canvas error gives one clear message and no traceback
+- `connect` with a saved token does not prompt, and a rejected saved token tells the user how to put in a new one
+- `connect --replace` keeps the old token when the new one is rejected, and `disconnect` removes only the token
 - Erase removes the new files too
 - The guide file exists after a sync and holds no token and no coursework text
-- Tried by hand with `BARD_HOME` set to a throwaway folder, never a real one: connect with a wrong token and with an address that does not exist, run a sync, then erase
+- Tried by hand with `BARD_HOME` set to a throwaway folder, never a real one: connect with a wrong token and with an address that does not exist, connect again with a saved token, replace and disconnect, run a sync, then erase
 - Pull request reviewed by one teammate and linked to its issue; the one for S2-14 says `Refs #14`, not `Closes #14`, because it only covers part of that issue
 - AI use, if any, written in the pull request

@@ -1,4 +1,4 @@
-# S2-D Errors, erase, guide file and test fake: requirements
+# S2-D Errors, connect, erase, guide file and test fake: requirements
 
 **Covers:** FR-01, FR-09, FR-10
 
@@ -6,7 +6,7 @@
 
 **Gherkin:** `features/connecting_a_canvas_account.feature`, `features/erasing_everything.feature`
 
-Items: S2-13 to S2-16, see `docs/ProjectManagement/SprintBacklog.md`.
+Items: S2-13 to S2-17, see `docs/ProjectManagement/SprintBacklog.md`.
 
 ## S2-13 Clear messages for Canvas errors
 
@@ -53,3 +53,17 @@ The existing FR-09 behaviour spec describes the connector, not this file.
 - Each of these has a short test showing the fake does what it says
 - The fake holds no real Canvas data, and the PDFs are built in code
 - The existing tests still pass
+
+## S2-17 Connect with a saved token
+
+The tests go in `code/backend/tests/test_s1_01_connect.py`.
+
+### Acceptance criteria
+
+- `bard connect` with a saved token does not ask for anything, makes no call to Canvas, and prints "Already connected to" and the saved Canvas address, then how to put in a new token (`bard connect --replace`) and how to remove the token and keep the archive (`bard disconnect`)
+- `bard connect --replace` asks for the address and the new token, checks the new token with Canvas, and only then saves it; if Canvas rejects the new token, the old one stays saved
+- `bard disconnect` removes the saved token file and nothing else, and says the archive was not changed and that the token should also be revoked in Canvas; with no saved token it says it is not connected
+- When Canvas rejects a saved token (401) in any command that calls Canvas, the message says the token expired or was removed and gives the one command to put in a new one (`bard connect --replace`); files already saved stay and nothing else is changed
+- No message shows the token
+- `erase` still removes the archive and the token, as before
+- Tests cover already connected, replace with a good token, replace with a rejected token, disconnect with and without a saved token, and a rejected saved token during `sync`
