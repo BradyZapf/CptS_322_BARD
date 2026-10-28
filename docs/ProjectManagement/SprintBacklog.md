@@ -28,7 +28,7 @@ first in a small pull request.
 
 Goal: download everything a student can see in Canvas, show it in a local page, and say what is new and what is missing.
 
-The work is split into four parts. A is sync and coverage, B is the local web page and search tests, C is file work, and D is errors, erase, the coding-agent guide and the test fake. Each part has a folder under `specs/features/` with its acceptance criteria and its "done" checks.
+The work is split into four parts. A is sync and coverage, B is the local web page and search tests, C is file work, and D is errors, the connect command, erase, the coding-agent guide and the test fake. Each part has a folder under `specs/features/` with its acceptance criteria and its "done" checks.
 
 Points use the same 1 to 5 scale as the `points:` labels on the issues, and priority is High, Medium or Low as in the `priority:` labels. These tables are a snapshot of those labels; when they differ, the issue wins.
 
@@ -79,7 +79,7 @@ Done when:
 - **S2-11:** an image-only PDF and a password-locked PDF are marked unreadable with a reason, the original is kept and no .md is written; a damaged file does not stop the sync; unreadable files are listed in the report.
 - **S2-12:** the files on the user's own submissions are saved with the assignment they belong to; only the user's own submission is requested, never anyone else's; a file that cannot be saved gets a status and a reason; the test fake covers a submission with a file and one without.
 
-### Part D: errors, erase, guide file and test fake
+### Part D: errors, connect, erase, guide file and test fake
 
 | ID | Item | Priority | Points | Covers | Owner |
 |---|---|---|---|---|---|
@@ -87,12 +87,14 @@ Done when:
 | S2-14 | Erase follow-ups ([#14](https://github.com/BradyZapf/CptS_322_BARD/issues/14), carried over from Sprint 1) | Medium | 2 | FR-10 | |
 | S2-15 | Guide file for coding agents (README-for-AI.md) | Medium | 2 | FR-09 | |
 | S2-16 | Improve the test fake so it can simulate more of Canvas | Medium | 3 | | |
+| S2-17 | Connect with a saved token: already connected, replace and disconnect | Medium | 2 | FR-01 | |
 
 Done when:
 - **S2-13:** in `connect`, a wrong token, a 403, a 500 and an unreachable Canvas each print one plain message and no traceback; in `sync`, a wrong token or a lost connection or timeout stops with one plain message, while a 5xx or 429 on one part marks that part error and the rest carries on; no message contains the token; tests cover each case.
 - **S2-14:** the reminder to revoke the token is shown whenever the token may still work, including when erase could not remove everything; the message after a refusal says nothing was removed and does not call the erase partial; tests cover an archive that cannot be removed, a token file that cannot be removed, and an archive that is already gone; erase also removes the new files (the .md copies and the guide file).
 - **S2-15:** after a sync, `README-for-AI.md` exists at the archive root; it explains how files are laid out and named, what each file status means, and to use `bard search`; it contains no token and no coursework text.
 - **S2-16:** the fake Canvas in `tests/fakes.py` can simulate a blocked Files tab, a locked file, a file that changes between two syncs, a text PDF, a scanned PDF, a password-locked PDF, a Word file, a submission with a file, and the Canvas errors 403, 500 and unreachable; each one has a short test showing it works; the existing tests still pass; the fake holds no real Canvas data.
+- **S2-17:** `connect` with a saved token does not ask again and says it is already connected, and how to replace or remove the token; `connect --replace` puts in a new token and keeps the old one if Canvas rejects the new one; `disconnect` removes only the token and leaves the archive; a rejected saved token says it expired or was removed and gives the command to put in a new one; tests cover each.
 
 ### Carried over from Sprint 1: re-estimates
 
