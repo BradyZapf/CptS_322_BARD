@@ -22,6 +22,9 @@ from .models import Course, CourseFile, CourseItem, FileStatus
 PARTS = ("files", "modules", "assignments", "pages", "announcements")  # table columns, in order
 BLOCKED_IS_NORMAL = ("Blocked is normal: the instructor switched that part off, "
                      "so a column of blocked is not a failure.")
+# A whole course Canvas refused on purpose ends its reason like this. Any other reason (unreachable,
+# server error) is a problem, so it is told apart by reason and works with or without retries.
+REFUSED_ENDINGS = ("(403)", "(404)")
 # These two names are what sync.py passes to record_missed when the whole sync stops early.
 SYNC_STOPPED = ("everything", "course list")
 
@@ -33,6 +36,7 @@ class Outcome(StrEnum):
     EMPTY = "empty"  # Canvas answered with nothing
     BLOCKED = "blocked"  # Canvas refused because the instructor switched it off (normal)
     ERROR = "error"  # it kept failing after every retry (a real problem)
+    NOT_ASKED = "n/a"  # the sync does not record this part yet, so "empty" would be a guess
 
 
 @dataclass
@@ -51,6 +55,7 @@ class Coverage:
     cells: dict[str, dict[str, Outcome]] = field(default_factory=dict)  # course code -> part -> outcome
     not_accessible: dict[str, str] = field(default_factory=dict)  # course code -> reason
     file_counts: Counter = field(default_factory=Counter)  # FileStatus -> number of files
+    course_errors: dict[str, str] = field(default_factory=dict)  # course code -> reason (row says error)
     problems: list[Problem] = field(default_factory=list)
 
 
@@ -80,7 +85,8 @@ def build_coverage(courses: list[Course], missed: list[tuple[str, str]], sync_st
     {(course code, part): (Outcome, reason)}; it wins over what is derived from the items."""
     part_outcomes = part_outcomes or {}
     seen_times = [i.first_seen for c in courses for i in c.items if i.first_seen]
-    # With no earlier item at all, every item is new. That says nothing, so list nothing (S2-04).
+    # sync_started is made when the sync starts and first_seen when each item is saved, so a new
+    # item is never earlier than it. With no earlier item at all, every item is new. That says nothing, so list nothing (S2-04).
     first_sync = not any(t < sync_started for t in seen_times)
     cov = Coverage(first_sync=first_sync)
     codes = {c.code for c in courses}
@@ -88,8 +94,12 @@ def build_coverage(courses: list[Course], missed: list[tuple[str, str]], sync_st
 
     for course in sorted(courses, key=lambda c: c.code):
         refused = [reason for what, reason in missed if what == course.code]
-        if refused:
+        if refused and refused[0].endswith(REFUSED_ENDINGS):
             cov.not_accessible[course.code] = refused[0]
+            continue
+        if refused:  # the whole course failed for another reason: a real problem
+            cov.course_errors[course.code] = refused[0]
+            cov.problems.append(Problem(course.code, "whole course", refused[0]))
             continue
         by_part: dict[str, list[CourseItem]] = {p: [] for p in PARTS}
         for item in course.items:
@@ -99,8 +109,10 @@ def build_coverage(courses: list[Course], missed: list[tuple[str, str]], sync_st
             items = by_part[part]
             if part == "files":
                 row[part] = _files_cell(items)  # type: ignore[arg-type]
-            else:
-                row[part] = Outcome.OK if items else Outcome.EMPTY
+            elif items:
+                row[part] = Outcome.OK
+            else:  # modules are not synced yet, so an empty list proves nothing
+                row[part] = Outcome.NOT_ASKED if part == "modules" else Outcome.EMPTY
             if (course.code, part) in part_outcomes:
                 row[part], reason = part_outcomes[(course.code, part)]
                 if row[part] is Outcome.ERROR:
@@ -133,12 +145,14 @@ def render(cov: Coverage) -> str:
         lines.append(f"  {course}  {part}  {title}")
 
     lines += ["", "Coverage", f"  {BLOCKED_IS_NORMAL}"]
-    width = max([len("Course"), *map(len, [*cov.cells, *cov.not_accessible])])
+    width = max([len("Course"), *map(len, [*cov.cells, *cov.not_accessible, *cov.course_errors])])
     lines.append("  " + "  ".join([f"{'Course':<{width}}", *(f"{p:<13}" for p in PARTS)]).rstrip())
-    rows = {**{code: None for code in cov.not_accessible}, **cov.cells}
+    rows = {**dict.fromkeys([*cov.not_accessible, *cov.course_errors]), **cov.cells}
     for code in sorted(rows):
         if code in cov.not_accessible:
             lines.append(f"  {code:<{width}}  not accessible: {cov.not_accessible[code]}")
+        elif code in cov.course_errors:
+            lines.append(f"  {code:<{width}}  error: {cov.course_errors[code]}")
         else:
             lines.append("  " + "  ".join([f"{code:<{width}}",
                                            *(f"{cov.cells[code][p]:<13}" for p in PARTS)]).rstrip())

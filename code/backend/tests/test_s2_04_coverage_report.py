@@ -81,8 +81,8 @@ def test_the_table_has_one_row_per_course_and_one_column_per_part(archive):
     _, text = sync_and_report(archive, {"c1": [pdf(1), assignment(2)], "c2": [pdf(1)]})
     header = section(text, "Coverage")[1].split()
     assert header == ["Course", "files", "modules", "assignments", "pages", "announcements"]
-    assert table_row(text, "FAKE-101") == ["FAKE-101", "ok", "empty", "ok", "empty", "empty"]
-    assert table_row(text, "FAKE-202") == ["FAKE-202", "ok", "empty", "empty", "empty", "empty"]
+    assert table_row(text, "FAKE-101") == ["FAKE-101", "ok", "n/a", "ok", "empty", "empty"]
+    assert table_row(text, "FAKE-202") == ["FAKE-202", "ok", "n/a", "empty", "empty", "empty"]
 
 
 def test_rows_are_sorted_by_course_code(archive):
@@ -94,7 +94,7 @@ def test_rows_are_sorted_by_course_code(archive):
 
 def test_a_course_with_nothing_in_it_is_empty_everywhere_and_not_a_problem(archive):
     _, text = sync_and_report(archive, {"c1": []})
-    assert table_row(text, "FAKE-101") == ["FAKE-101"] + ["empty"] * 5
+    assert table_row(text, "FAKE-101") == ["FAKE-101", "empty", "n/a", "empty", "empty", "empty"]
     assert section(text, "Problems") == ["  None."]
 
 
@@ -194,20 +194,45 @@ def test_the_sync_hands_its_courses_to_the_report(archive):
     assert len(report.courses[0].items) == 1
 
 
-def test_the_coverage_command_syncs_and_prints_the_report(tmp_path, monkeypatch, capsys):
+def _cli_user(tmp_path, monkeypatch, connection):
     user = User(tmp_path / "BARD", tmp_path / "cfg" / "config.json")
-    monkeypatch.setattr(user, "load_connection", lambda: FakeConnection({"c1": [pdf(1)]}))
+    monkeypatch.setattr(user, "load_connection", lambda: connection)
     monkeypatch.setattr(cli, "User", lambda: user)
-    assert cli.main(["coverage"]) == 0
+
+
+def test_sync_prints_the_summary_then_the_coverage_report(tmp_path, monkeypatch, capsys):
+    _cli_user(tmp_path, monkeypatch, FakeConnection({"c1": [pdf(1)]}))
+    assert cli.main(["sync"]) == 0
     out = capsys.readouterr().out
-    assert out.startswith("New since the last sync") and "FAKE-101" in out
+    assert out.startswith("Saved 1 items.") and "New since the last sync" in out and "FAKE-101" in out
 
 
-def test_the_coverage_command_says_when_not_connected(tmp_path, monkeypatch, capsys):
-    user = User(tmp_path / "BARD", tmp_path / "cfg" / "config.json")
-    monkeypatch.setattr(cli, "User", lambda: user)
-    assert cli.main(["coverage"]) == 0
-    assert "Not connected yet" in capsys.readouterr().out
+def test_a_second_sync_command_shows_what_the_first_one_did_not(tmp_path, monkeypatch, capsys):
+    _cli_user(tmp_path, monkeypatch, FakeConnection({"c1": [pdf(1)]}))
+    cli.main(["sync"])
+    _cli_user(tmp_path, monkeypatch, FakeConnection({"c1": [pdf(1), pdf(2)]}))
+    capsys.readouterr()
+    cli.main(["sync"])
+    assert "  FAKE-101  files  Slides 2" in capsys.readouterr().out
+
+
+def test_a_whole_course_that_was_unreachable_is_an_error_and_a_problem():
+    c = course(1)
+    reason = "cannot reach Canvas: timed out"
+    text = render(build_coverage([c], [(c.code, reason)], datetime.now(timezone.utc)))
+    assert section(text, "Coverage")[2] == f"  FAKE-101  error: {reason}"
+    assert section(text, "Problems") == [f"  FAKE-101  whole course: {reason}"]
+
+
+def test_modules_say_n_a_until_the_sync_records_them(archive):
+    _, text = sync_and_report(archive, {"c1": [pdf(1)]})
+    assert table_row(text, "FAKE-101")[2] == "n/a"
+
+
+def test_known_gap_a_sync_that_saved_nothing_makes_the_next_one_count_as_first(archive):
+    sync_and_report(archive, {"c1": [pdf(1)]}, failing_files={1})  # nothing saved, no first-seen time
+    _, text = sync_and_report(archive, {"c1": [pdf(1)]})
+    assert "first sync" in "\n".join(section(text, "New since the last sync"))
 
 
 def _course_with(*items):
