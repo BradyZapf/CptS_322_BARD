@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
 
 from .models import CourseItem, Page, Passage
@@ -18,6 +19,14 @@ from .models import CourseItem, Page, Passage
 # body is column 3: snippet() below picks its passage from that column.
 SCHEMA = ("create virtual table if not exists docs using fts5("
           "key UNINDEXED, course, title, body, item_id UNINDEXED, path UNINDEXED)")
+# One row per item BARD has ever saved. Kept apart from docs, because add_item deletes and
+# re-inserts a docs row on every sync, and first_seen must survive that.
+FIRST_SEEN_SCHEMA = "create table if not exists first_seen (key text primary key, seen_at text not null)"
+
+
+def item_key(item: CourseItem) -> str:
+    """The kind is part of the key: an assignment and a page can share an id."""
+    return f"{item.course_code}/{type(item).__name__}/{item.item_id}"
 
 
 def quote_query(query: str) -> str:
@@ -33,12 +42,12 @@ class SearchIndex:
         self.index_path.parent.mkdir(parents=True, exist_ok=True)
         db = sqlite3.connect(self.index_path)
         db.execute(SCHEMA)
+        db.execute(FIRST_SEEN_SCHEMA)
         return db
 
     def add_item(self, item: CourseItem) -> None:
         """Add (or replace) one item's text in the index."""
-        # The kind is part of the key: an assignment and a page can share an id.
-        key = f"{item.course_code}/{type(item).__name__}/{item.item_id}"
+        key = item_key(item)
         db = self._connect()
         try:
             with db:  # commits on success
@@ -49,6 +58,21 @@ class SearchIndex:
                             item.item_id, item.local_path))
         finally:
             db.close()  # an open connection on Windows stops erase from deleting index.db
+
+    def stamp_first_seen(self, item: CourseItem, now: datetime | None = None) -> None:
+        """S2-01. Set item.first_seen. The first call for an item stores `now`; later calls, even
+        in a new run, read it back and never change it ("insert or ignore")."""
+        now = now or datetime.now(timezone.utc)
+        db = self._connect()
+        try:
+            with db:
+                db.execute("insert or ignore into first_seen (key, seen_at) values (?, ?)",
+                           (item_key(item), now.isoformat()))
+                (seen_at,) = db.execute("select seen_at from first_seen where key = ?",
+                                        (item_key(item),)).fetchone()
+        finally:
+            db.close()
+        item.first_seen = datetime.fromisoformat(seen_at)
 
     def search(self, query: str, limit: int = 10) -> list[Passage]:
         """FR-06. Best matches first. Each Passage names its source. If nothing matches,

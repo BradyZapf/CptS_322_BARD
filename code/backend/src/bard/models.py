@@ -13,6 +13,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
+from enum import Enum
 from pathlib import Path
 
 
@@ -36,6 +37,17 @@ class Course:
         )
 
 
+class FileStatus(str, Enum):
+    """What happened to one file (S2-01). Blocked and locked are the instructor's choice, so the
+    report counts them as normal. Failed and unreadable are problems and are listed with a reason."""
+
+    SAVED = "saved"  # downloaded and in the archive
+    BLOCKED = "blocked"  # Canvas refused (403) or could not find it (404)
+    LOCKED = "locked"  # Canvas describes the file but gives no download link
+    FAILED = "failed"  # tried and kept failing: Canvas unreachable, or a server error
+    UNREADABLE = "unreadable"  # saved, but its text could not be read (set by the file work, S2-11)
+
+
 @dataclass
 class CourseItem(ABC):
     """Anything inside a course.
@@ -45,6 +57,9 @@ class CourseItem(ABC):
     title: str
     course_code: str
     local_path: str = ""  # where the .md copy lives, relative to the archive folder
+    # When BARD first saw this item, timezone-aware UTC. Not a Canvas date: an instructor can
+    # create a whole term on setup day. Set by the sync and kept between runs; None until saved.
+    first_seen: datetime | None = None
 
     @abstractmethod
     def to_text(self) -> str:
@@ -113,6 +128,8 @@ class CourseFile(CourseItem):
     file_name: str = ""
     linked_from: str = ""  # where the link was found: "files", "modules", "assignment 123", ...
     text_path: str = ""
+    status: FileStatus | None = None  # None until the sync has tried this file
+    status_reason: str = ""  # plain words, e.g. "forbidden by the instructor (403)"
     size: int = 0
     updated_at: datetime | None = None
     text: str = ""

@@ -11,8 +11,8 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from bard.canvas_connection import NotAvailable, TokenRejected
-from bard.models import Assignment, Course, CourseFile, CourseItem
+from bard.canvas_connection import CanvasUnreachable, NotAvailable, TokenRejected
+from bard.models import Assignment, Course, CourseFile, CourseItem, FileStatus
 
 URL = "https://canvas.example.edu"
 TOKEN = "fake-token-1234"
@@ -33,10 +33,13 @@ class FakeConnection:
 
     def __init__(self, courses: dict[str, list[CourseItem]] | None = None,
                  reject_token: bool = False, forbidden_files: set[int] | None = None,
+                 locked_files: set[int] | None = None, failing_files: set[int] | None = None,
                  file_bytes: bytes = b"%PDF-1.4 fake"):
         self.courses = courses or {}
         self.reject_token = reject_token
         self.forbidden = forbidden_files or set()
+        self.locked = locked_files or set()  # Canvas describes them but gives no download link
+        self.failing = failing_files or set()  # Canvas keeps failing after every retry
         self.file_bytes = file_bytes
         self.fetched: list[int] = []
 
@@ -55,12 +58,29 @@ class FakeConnection:
         self.fetched.append(file_id)
         if file_id in self.forbidden:
             raise NotAvailable("forbidden by the instructor (403)")
+        if file_id in self.locked:
+            raise NotAvailable("locked by the instructor")
+        if file_id in self.failing:
+            raise CanvasUnreachable("cannot reach Canvas: Connection reset by peer")
         return self.file_bytes
 
 
-def pdf(i: int, size: int = 13) -> CourseFile:
+def pdf(i: int, size: int = 13, status: FileStatus | None = None, reason: str = "") -> CourseFile:
+    """A fake file. Leave status empty for a file the sync has not tried yet. Pass a status and
+    reason to build one as the sync would leave it, e.g. pdf(2, status=FileStatus.BLOCKED,
+    reason="forbidden by the instructor (403)")."""
     return CourseFile(item_id=i, title=f"Slides {i}", course_code="FAKE-101",
-                      file_name=f"slides{i}.pdf", linked_from="modules", size=size)
+                      file_name=f"slides{i}.pdf", linked_from="modules", size=size,
+                      status=status, status_reason=reason)
+
+
+FIRST_SEEN = datetime(2026, 9, 1, 12, 0, tzinfo=timezone.utc)
+
+
+def seen(item: CourseItem, when: datetime = FIRST_SEEN) -> CourseItem:
+    """The item with a first-seen time already set, as if an earlier sync had saved it."""
+    item.first_seen = when
+    return item
 
 
 # ---------------------------------------------------------------- raw Canvas JSON
