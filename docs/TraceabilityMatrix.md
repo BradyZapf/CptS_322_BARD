@@ -21,6 +21,7 @@ from this table, so add a row when you add either.
 | FR-08 | Exporting part of the archive | Export coursework | Exporter, CourseItem | exporting_part_of_the_archive |  |  |
 | FR-09 | My own AI tool reading the archive | Answer AI tool requests | AiConnector, SearchIndex | my_own_ai_tool_reading_the_archive |  |  |
 | FR-10 | Erasing everything | Delete all data | User | erasing_everything | test_s1_05_erase | S1-05 |
+| FR-02 | Re-upload keeps both versions | Sync coursework | SyncCoursework, SearchIndex, CourseFile | complete_download_of_a_course | test_s2_reupload_versions | Part A plan, item 5 |
 
 | NFR | Checked by |
 |---|---|

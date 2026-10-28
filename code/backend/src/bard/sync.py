@@ -24,6 +24,7 @@ from .models import Course, CourseFile, CourseItem, FileStatus
 from .search_index import SearchIndex
 from .sync_progress import SyncProgress
 from .sync_report import SyncReport
+from .versions import earlier_item, keep_earlier_version
 
 WINDOWS_RESERVED = {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)),
                     *(f"LPT{i}" for i in range(1, 10))}
@@ -164,6 +165,7 @@ class SyncCoursework:
             report.record_missed(f.file_name or f.title, str(e))
             self.progress.file_done(f)
             return
+        kept = keep_earlier_version(path, data)  # a re-upload keeps the old bytes too
         path.write_bytes(data)
         if f.updated_at:  # remember Canvas's timestamp, so is_unchanged() can compare next time
             os.utime(path, (f.updated_at.timestamp(), f.updated_at.timestamp()))
@@ -171,5 +173,8 @@ class SyncCoursework:
         f.status, f.status_reason = FileStatus.SAVED, "downloaded"
         self.index.stamp_first_seen(f)
         report.record_saved(f.local_path)
+        if kept:
+            self.index.add_item(earlier_item(f, kept, self.archive))
+            self.index.add_item(f)  # findable by name beside its earlier version
         self.progress.file_done(f)
         # Planned for a later sprint: call f.extract_text(path) here to write the text beside the original.
