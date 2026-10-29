@@ -43,6 +43,7 @@ One rule is shared by every part: every item gets a first-seen time, and every f
 | S2-03 | Report what was blocked | High | 5 | FR-04 | Ryan |
 | S2-04 | Show what is new since the last sync | High | 2 | FR-04 | Ryan |
 | S2-05 | Slow down when Canvas says the quota is low | Low | 1 | FR-02 | Ryan |
+| S2-18 | Discussions sync: topics and replies | Medium | 3 | FR-02 | |
 
 Done when:
 - **S2-01:** every item the sync saves has a first-seen time that stays the same on every later sync, even in a new run; every file has one of the five statuses and a reason; the test fake fills both; the existing tests still pass.
@@ -50,6 +51,7 @@ Done when:
 - **S2-03:** the report has one row per course, with each part of the course (files, modules, assignments, pages, announcements) marked ok, empty, blocked or error; a blocked Files tab shows as blocked, not as error, and the report says blocked is normal; below the table only real problems are listed (error cells, failed files, unreadable files), each with its reason; while a sync runs, the terminal shows live progress (course, each part, each file, running counts, and skips and failures with a reason) before the report.
 - **S2-04:** the report starts with what is new since the last sync; a fake course with one new file lists that file; a second sync with no changes lists nothing.
 - **S2-05:** when Canvas reports a low remaining quota (`X-Rate-Limit-Remaining`), the sync waits before its next request; a 429 is still retried as it is today; the tests do not wait for real.
+- **S2-18:** each course's discussion topics are saved with their title, message, posted date and attachments, and each topic's replies are saved with their threading (reply to reply), date and message, as Canvas shows them to the student (`/discussion_topics/<id>/view`); a topic that hides replies until the student posts, or a Discussions tab that is switched off, is reported as blocked and the rest of the course still syncs; the sync only reads from Canvas; the test fake covers a topic with nested replies and a blocked one.
 
 ### Part B: local web page, search tests and web security tests
 
@@ -119,3 +121,4 @@ Process items from the Sprint 1 retrospective:
 | PB-02 | Let my own AI tool read the archive | FR-09 | Medium | TraceabilityMatrix (no spec or test yet); the guide file (S2-15) is the first step |
 | PB-03 | Keep both versions when an instructor replaces a file | FR-03 | Low | The sync overwrites the first copy of a changed file (`_save_file` in `sync.py`) |
 | PB-04 | Sync on a schedule the user sets, so BARD does not have to be opened | FR-02 | Low | Team idea. Needs a decision on how the token is used when BARD is not open (mission rule 5) and on a scheduler for each of the three systems (NFR-07) |
+| PB-05 | Grade watcher: watch one grade (an assignment, exam or project) and get told when it is posted | none yet (needs a new FR) | Low | Team idea. One small request for the user's own submission (`/courses/<c>/assignments/<a>/submissions/self`), repeated on an interval the user sets, and a notice when the grade or score appears or changes. The user picks the item, how often, and what to be told about. Shares PB-04's open question about using the token while BARD is not open |
