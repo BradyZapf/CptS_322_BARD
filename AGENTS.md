@@ -52,16 +52,21 @@ wins until a human changes it.
   against it (title `S2-03: ...`, description starting "Based on #<n>"). When the one below
   merges, retarget yours to `main`. Fix a gap in the earliest PR that owns it, then merge up.
 - Edit only the files your story's `plan.md` lists.
-- **`code/backend/src/bard/models.py` is the shared contract.** Do not rename or remove
-  anything in it inside a feature branch. Adding to it needs the same approval. If your story
-  needs a change there, stop and tell the human. It goes in its own small pull request that the
-  whole team approves first.
+- **`code/backend/src/bard/models.py` is the shared contract.** Adding to it is fine inside
+  your story's pull request when the new field or class has a default, so nobody's code
+  breaks: say so in one line in the PR. Renaming, removing or changing the type of anything
+  there breaks other people's code: stop and tell the human. That goes in its own small pull
+  request that the whole team approves first.
+- **Hand-offs.** Each story's `requirements.md` has a short "Depends on / provides" list:
+  what it reads from other stories (fields, folders, files, statuses) and what it hands to
+  them. If you change something another story reads, update that story's spec in the same
+  pull request and tag its owner.
 - **Decide alone:** implementation details of your own story (an extra safety check, a clearer
   message, a reordered step, a tuning number). You may edit your story's `requirements.md` and
   `plan.md` in the same pull request; the reviewer sees it in the diff, and you list it in the
-  PR. **Ask the team first** if it alters the UML in `docs/design/`, `models.py`, a
-  `features/*.feature` file, or what the story delivers (new scope, a new requirement ID,
-  another story's files).
+  PR. **Ask the team first** if it alters the UML in `docs/design/`, renames or removes
+  anything in `models.py`, changes a `features/*.feature` file, or changes what the story
+  delivers (new scope, a new requirement ID, another story's files).
 - Do not weaken, skip or delete a test to make it pass. If a test looks wrong, say so. Do not
   touch `features/*.feature` wording: change the requirement first, as a team.
 
