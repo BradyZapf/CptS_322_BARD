@@ -15,9 +15,12 @@ Items: S2-06 to S2-09, see `docs/ProjectManagement/SprintBacklog.md`.
 - The page runs on the user's own computer and answers only requests from that computer
 - The address carries a secret that is new every time the page starts
 - The first page lists every course in the archive
-- Opening a course lists its items: assignments, pages, announcements and files
+- Opening a course lists its items: assignments, pages, announcements, files and modules
 - The items are grouped by module, in the order of the modules, using the modules saved by S2-02; items that are in no module are listed after them
-- Opening an item shows its text, read from the .md copy the sync saved
+- A module entry is matched to its item by the id the module file records (for example `Notes (Page 123)`), never by title, because titles repeat; an entry with no id (a heading or a link) is shown as plain text
+- Opening an assignment, page or announcement shows its text with its formatting, read from the .md copy the sync saved, with anything that could run (scripts, event handlers) removed
+- Opening a file opens the original in the browser: PDFs and images are shown, other types download; once S2-10 adds text copies, the file's text is searchable too
+- Files are served with their real Content-Type and `X-Content-Type-Options: nosniff`. Only PDFs and png, jpg, gif and webp images open in the browser; SVG, HTML and every other type download (`Content-Disposition: attachment`), because an uploaded SVG or HTML file can run script. Every page sends a Content-Security-Policy that blocks inline script
 - An empty archive shows "nothing downloaded yet" and not an error
 - The page only reads the archive folder and makes no calls to Canvas or the internet
 - Flask is added to the dependencies in `pyproject.toml` (it is already the tech stack's choice)
@@ -52,5 +55,6 @@ Carried over from Sprint 1 as [#13](https://github.com/BradyZapf/CptS_322_BARD/i
 - Searching for SQL injection text such as `' OR 1=1 --` or `"; DROP TABLE docs; --` returns normal results or none, and every item is still findable afterwards
 - An item address containing `../`, plain or encoded, is refused and nothing outside the archive is served
 - A title such as `<script>alert(1)</script>` is shown as plain text and does not run
+- An uploaded `.svg` or `.html` file that contains `<script>` is downloaded, not shown, and the response has `nosniff` and the Content-Security-Policy
 - A request without the right secret in the address is refused
 - A POST, PUT or DELETE is refused, because the page only reads
