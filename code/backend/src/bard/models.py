@@ -59,6 +59,8 @@ class Submission:
     submitted_at: datetime | None
     grade: str | None = None
     score: float | None = None
+    # The files the user handed in. Filled by the submission download (S2-12); empty until then.
+    attachments: list[CourseFile] = field(default_factory=list)
 
     def is_late(self, due_date: datetime | None) -> bool:
         return bool(due_date and self.submitted_at and self.submitted_at > due_date)
