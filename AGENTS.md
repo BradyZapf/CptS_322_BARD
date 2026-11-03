@@ -101,7 +101,7 @@ traceability check on every pull request.
 | Fact | Lives in |
 |---|---|
 | What a story means, which files it touches, acceptance criteria | `specs/features/<story>/` (changes by pull request) |
-| Who owns it, status, priority, points | the GitHub issue and the board, never a file |
+| Who owns it, status, priority, points | the GitHub issue and the board. `docs/ProjectManagement/SprintBacklog.md` keeps a snapshot of them, and the issue wins if the two differ. Spec folders never hold them |
 | Which requirement is tested where | `docs/TraceabilityMatrix.md` (CI checks it is complete) |
 | What BARD is and the rules | `specs/constitution/` |
 | Design, test plan and reports | `docs/design/`, `docs/Reports/`: change them in the PR that changes the behaviour |
