@@ -56,6 +56,8 @@ class Coverage:
     not_accessible: dict[str, str] = field(default_factory=dict)  # course code -> reason
     file_counts: Counter = field(default_factory=Counter)  # FileStatus -> number of files
     course_errors: dict[str, str] = field(default_factory=dict)  # course code -> reason (row says error)
+    # (course code, part) -> how many items of a blocked tab were still saved through modules or links
+    saved_another_way: dict[tuple[str, str], int] = field(default_factory=dict)
     problems: list[Problem] = field(default_factory=list)
 
 
@@ -121,6 +123,10 @@ def build_coverage(courses: list[Course], missed: list[tuple[str, str]], sync_st
                     row[part], reason = Outcome.ERROR, f"unknown outcome {outcome!r}: {reason}"
                 if row[part] is Outcome.ERROR:
                     cov.problems.append(Problem(course.code, part, reason))
+            if row[part] is Outcome.BLOCKED:
+                saved = [i for i in items if not isinstance(i, CourseFile) or i.status is FileStatus.SAVED]
+                if saved:
+                    cov.saved_another_way[(course.code, part)] = len(saved)
         cov.cells[course.code] = row
         for item in sorted(course.items, key=lambda i: (part_of(i), i.title)):
             if isinstance(item, CourseFile) and item.status is not None:
@@ -165,6 +171,10 @@ def render(cov: Coverage) -> str:
     counted = [f"{n} {s}" for s in (FileStatus.BLOCKED, FileStatus.LOCKED) if (n := cov.file_counts[s])]
     if counted:
         lines.append(f"  Files counted, not listed: {', '.join(counted)}.")
+    for (code, part), n in sorted(cov.saved_another_way.items()):
+        what = part if n != 1 else part.removesuffix("s")
+        lines.append(f"  {code}: the {part} tab is blocked; {n} {what} still saved another way "
+                     "(modules, links or the syllabus).")
 
     lines += ["", "Problems"]
     if not cov.problems:

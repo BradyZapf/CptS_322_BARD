@@ -248,7 +248,7 @@ import responses  # noqa: E402
 
 from bard import canvas_connection  # noqa: E402
 from bard.canvas_connection import CanvasConnection, CanvasUnreachable, NotAvailable  # noqa: E402
-from fakes import TOKEN, URL, canvas_json_module_item, canvas_json_page  # noqa: E402
+from fakes import TOKEN, URL, canvas_json_file, canvas_json_module_item, canvas_json_page  # noqa: E402
 from test_s2_02_modules_files_fallback import BLOCKED, serve  # noqa: E402
 
 
@@ -323,13 +323,61 @@ def test_progress_missed_reasons_classify_by_their_ending(archive):
 
 
 @responses.activate
-def test_pages_found_through_modules_read_ok_when_the_pages_tab_is_blocked(archive, no_waiting):
+def test_a_blocked_pages_tab_stays_blocked_when_pages_are_found_through_modules(archive, no_waiting):
+    # S2-03: a switched-off tab is blocked, even when its pages are still saved another way.
     c = course(1)
     serve(c, {10: [canvas_json_module_item(1, kind="Page", page_url="hidden")]}, pages_tab="blocked")
     responses.get(f"{URL}/api/v1/courses/{c.course_id}/pages/hidden", json=canvas_json_page(9, "Notes"))
     report = SyncCoursework(OneCourse([c]), archive).sync()
     text = render(build_coverage(report.courses, report.missed, report.sync_date, report.part_outcomes))
-    assert table_row(text, "FAKE-101")[4] == "ok"  # files, modules, assignments, PAGES
+    assert table_row(text, "FAKE-101")[4] == "blocked"  # files, modules, assignments, PAGES
+    assert ("  FAKE-101: the pages tab is blocked; 1 page still saved another way "
+            "(modules, links or the syllabus)."
+            in section(text, "Coverage"))
+    assert (archive / "FAKE-101" / "pages").exists()  # the page itself is still saved
+
+
+@responses.activate
+def test_a_blocked_files_tab_stays_blocked_when_files_are_found_through_modules(archive, no_waiting):
+    # The real case: CPT_S 317 and 322 answer 403 on their Files tab, and their files come
+    # through modules. The cell must say blocked, with a note that the files were still saved.
+    c = course(1)
+    serve(c, {10: [canvas_json_module_item(1, file_id=5, title="Slides"),
+                   canvas_json_module_item(2, file_id=6, title="Notes")]})
+    for f in (5, 6):
+        responses.get(f"{URL}/api/v1/files/{f}", json=canvas_json_file(f))
+        responses.get(f"{URL}/files/{f}/download", body=b"%PDF-1.4 fake")
+    report = SyncCoursework(OneCourse([c]), archive).sync()
+    text = render(build_coverage(report.courses, report.missed, report.sync_date, report.part_outcomes))
+    assert table_row(text, "FAKE-101")[1] == "blocked"
+    assert ("  FAKE-101: the files tab is blocked; 2 files still saved another way "
+            "(modules, links or the syllabus)."
+            in section(text, "Coverage"))
+    assert len(list((archive / "FAKE-101" / "files").iterdir())) == 2
+    assert section(text, "Problems") == ["  None."]  # blocked is normal, never a problem
+
+
+@responses.activate
+def test_a_blocked_files_tab_with_nothing_found_reads_blocked_not_empty(archive, no_waiting):
+    c = course(1)
+    serve(c, {})
+    report = SyncCoursework(OneCourse([c]), archive).sync()
+    text = render(build_coverage(report.courses, report.missed, report.sync_date, report.part_outcomes))
+    assert table_row(text, "FAKE-101")[1] == "blocked"
+    assert not any("still saved" in line for line in section(text, "Coverage"))
+    assert section(text, "Problems") == ["  None."]
+
+
+@responses.activate
+def test_a_files_tab_that_answers_reads_ok_with_no_note(archive, no_waiting):
+    c = course(1)
+    serve(c, {10: [canvas_json_module_item(1, file_id=5, title="Slides")]}, files_tab="ok")
+    responses.get(f"{URL}/api/v1/files/5", json=canvas_json_file(5))
+    responses.get(f"{URL}/files/5/download", body=b"%PDF-1.4 fake")
+    report = SyncCoursework(OneCourse([c]), archive).sync()
+    text = render(build_coverage(report.courses, report.missed, report.sync_date, report.part_outcomes))
+    assert table_row(text, "FAKE-101")[1] == "ok"
+    assert not any("still saved" in line for line in section(text, "Coverage"))
 
 
 @responses.activate

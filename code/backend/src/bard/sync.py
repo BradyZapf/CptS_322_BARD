@@ -20,7 +20,6 @@ from .canvas_connection import (
     NotAvailable,
     TokenRejected,
 )
-from .coverage_report import part_of
 from .models import Course, CourseFile, CourseItem, FileStatus
 from .search_index import SearchIndex
 from .sync_progress import SyncProgress
@@ -100,7 +99,7 @@ class SyncCoursework:
                 in_a_row = in_a_row + 1 if isinstance(e, CanvasUnreachable) else 0
                 continue
             in_a_row = 0
-            self._note_part_outcomes(course, items, report)
+            self._note_part_outcomes(course, report)
             self.progress.items_found(items)
             for item in items:
                 if isinstance(item, CourseFile):
@@ -113,15 +112,15 @@ class SyncCoursework:
         # 1.1.4 summarize() happens in the UI, which calls report.summarize()
         return report
 
-    def _note_part_outcomes(self, course: Course, items: list[CourseItem], report: SyncReport) -> None:
+    def _note_part_outcomes(self, course: Course, report: SyncReport) -> None:
         """What each tab answered, for the coverage report. A connection that does not say (the
         fake one) leaves the report to derive it from the items. Only what the items cannot show
-        is kept: a switched-off tab, and modules that came back empty."""
+        is kept: a switched-off tab, and modules that came back empty. A switched-off tab stays
+        blocked even when its files or pages were found another way (S2-03); the report says how
+        many were still saved."""
         results = getattr(self.connection, "part_results", None) or {}
         for part, result in results.items():
             if result.startswith("blocked"):
-                if part in {part_of(i) for i in items}:
-                    continue  # found another way (files and pages via modules, links, syllabus): ok
                 report.part_outcomes[(course.code, part)] = ("blocked", result.removeprefix("blocked: "))
             elif part == "modules" and result == "empty":
                 report.part_outcomes[(course.code, part)] = ("empty", "")
