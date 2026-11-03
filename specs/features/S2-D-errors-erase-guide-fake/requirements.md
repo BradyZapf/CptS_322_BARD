@@ -12,15 +12,16 @@ Items: S2-13 to S2-17, see `docs/ProjectManagement/SprintBacklog.md`.
 
 Carried over from Sprint 1 as [#17](https://github.com/BradyZapf/CptS_322_BARD/issues/17). The tests go in `code/backend/tests/test_s1_01_connect.py`.
 
+Part A already covers the sync side: a part or course that keeps failing (5xx, 429, unreachable) is marked error in the report and the rest carries on, with no token in any message (S2-03, S2-04). This item covers what is left.
+
 ### Acceptance criteria
 
 - In `connect`, a wrong token, a 403, a 500 and an unreachable Canvas each print one plain message and no traceback
-- In `sync`, a wrong token, or Canvas that cannot be reached or does not answer in time, stops the sync at once with one plain message; files already saved stay
-- In `sync`, a 5xx or 429 that keeps failing on one part does not stop the sync: that part is marked error (S2-A) and the others carry on
+- In `sync`, a token that Canvas rejects partway through (after some courses are saved) stops the sync with one plain message and no traceback; files already saved stay
 - A `connect` that fails saves nothing
 - No message contains the token
 - `import requests` in `user.py` is at the top of the file
-- Tests cover a connection error, a timeout, a rejected token, a 403 and a 500
+- Tests cover a connection error, a timeout, a rejected token, a 403 and a 500 in `connect`, and a token rejected partway through a `sync`
 
 ## S2-14 Erase follow-ups
 
@@ -44,14 +45,20 @@ The existing FR-09 behaviour spec describes the connector, not this file.
 - After a sync, `README-for-AI.md` exists at the archive root
 - It explains how files are laid out and named, what each of the five file statuses means, and to use `bard search`
 - It contains no token and no coursework text, and a test checks for both against the fake data
+- It also explains the `modules/` folder and how each module entry names its item by id, first-seen times, the `(earlier <date>)` copies of re-uploaded files, and the coverage report (blocked is normal; a blocked Files tab does not mean the course has no files)
+- The status names match `FileStatus` exactly, and a test fails if `FileStatus` gains a status the guide does not explain
 
-## S2-16 Improve the test fake
+## S2-16 A test harness: one fake Canvas for every test
+
+Today tests fake Canvas two ways: `FakeConnection` replaces `CanvasConnection` (so those tests never run the real Canvas code), and many test files register Canvas URLs by hand with `responses`. This item replaces both with one harness that every part's tests can use, so new tests are short and run the real code.
 
 ### Acceptance criteria
 
-- The fake Canvas in `tests/fakes.py` can simulate a blocked Files tab, a locked file, a file that changes between two syncs, a text PDF, a scanned PDF, a password-locked PDF, a Word file, a submission with a file, and the Canvas errors 403, 500 and unreachable
-- Each of these has a short test showing the fake does what it says
-- The fake holds no real Canvas data, and the PDFs are built in code
+- `tests/fakes.py` has one `FakeCanvas`: a test describes courses in code (tabs, modules, pages, files, assignments, submissions) and BARD talks to it through the real `CanvasConnection`
+- It can simulate: a blocked tab, modules, a file that changes between two syncs, a text PDF, a scanned PDF, a password-locked PDF, a Word file, a submission with a file, and the errors 403, 404, 429, 500 and unreachable
+- Each of these has a short test showing the harness does what it says
+- Moving the existing tests (S1-02a, S2-02 and others) onto the harness is a follow-up backlog item, not part of this sprint
+- The harness holds no real Canvas data, and the PDFs and Word files are built in code
 - The existing tests still pass
 
 ## S2-17 Connect with a saved token
