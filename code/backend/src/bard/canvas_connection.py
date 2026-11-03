@@ -17,7 +17,7 @@ import re
 import time
 from collections.abc import Callable, Iterable
 from datetime import datetime, timezone
-from typing import TypeVar
+from typing import NamedTuple, TypeVar
 from urllib.parse import urlparse
 
 import requests
@@ -50,10 +50,17 @@ REQUEST_TIMEOUT = 30  # seconds; a Canvas that has not answered by then counts a
 ANNOUNCEMENTS_FROM = "2000-01-01"
 ANNOUNCEMENTS_TO = "2100-01-01"
 
-# How course HTML links to a file: /courses/1/files/123/download, /files/123/preview, ...
-FILE_LINK = re.compile(r"/files/(\d+)")
-# The same, with the start of the link kept (up to a space, quote, bracket or "=") so the host can be checked.
-FILE_URL = re.compile(r"""([^\s"'<>()=]*)/files/(\d+)""")
+# How a link names a file: /courses/1/files/123/download, /files/123/preview, ...
+# The start of the link (up to a space, quote, bracket or "=") is kept so its host can be checked.
+FILE_LINK = re.compile(r"""([^\s"'<>()=]*)/files/(\d+)""")
+
+
+class ModuleScan(NamedTuple):
+    """What _modules read: the modules, and what they point at."""
+
+    modules: list[Module]
+    file_links: dict[int, tuple[str, str]]  # file id -> ("modules", item title)
+    page_slugs: list[str]  # url slug of every Page item
 
 
 class TokenRejected(Exception):
@@ -279,8 +286,8 @@ class CanvasConnection:
                                              end_date=ANNOUNCEMENTS_TO))]
 
         # Step 3: modules (S2-02). Their Page items may name pages the Pages list did not give.
-        modules, module_links, module_page_slugs = self._modules(canvas_course, course)
-        pages += self._pages_only_in_modules(canvas_course, course, module_page_slugs,
+        scan = self._modules(canvas_course, course)
+        pages += self._pages_only_in_modules(canvas_course, course, scan.page_slugs,
                                              known_slugs={p.url for p in canvas_pages})
 
         # Step 4: files, from the places they can be found.
@@ -290,14 +297,14 @@ class CanvasConnection:
             *((f"announcement {t.item_id}", t.body) for t in announcements),
             ("syllabus", course.syllabus),
         ]
-        files = self._files(canvas, canvas_course, course, html, module_links)
+        files = self._files(canvas, canvas_course, course, html, scan.file_links)
 
         # The syllabus is often the only place exam dates are written, so save it like a page.
         if course.syllabus:
             pages.append(Page(item_id=course.course_id, title="Syllabus", course_code=course.code,
                               body=course.syllabus))
 
-        return [*modules, *assignments, *announcements, *pages, *files]
+        return [*scan.modules, *assignments, *announcements, *pages, *files]
 
     def _list_or_empty(self, fn: Callable[[], Iterable[T]]) -> list[T]:
         """Read one whole Canvas list (every page) through _call. A part of the course the
@@ -308,11 +315,9 @@ class CanvasConnection:
         except NotAvailable:
             return []
 
-    def _modules(self, canvas_course: CanvasCourse, course: Course
-                 ) -> tuple[list[Module], dict[int, tuple[str, str]], list[str]]:
-        """S2-02. Every module with its items in Canvas's order, read once. Also returns what the
-        modules point at: files as file id -> ("modules", title) (File items by content_id, and
-        /files/<id> links in ExternalUrl items), and the url slug of every Page item."""
+    def _modules(self, canvas_course: CanvasCourse, course: Course) -> ModuleScan:
+        """S2-02. Every module with its items in Canvas's order, read once, plus what they point
+        at: File items (by content_id), /files/<id> links in ExternalUrl items, Page items."""
         modules: list[Module] = []
         file_links: dict[int, tuple[str, str]] = {}
         page_slugs: list[str] = []
@@ -329,18 +334,17 @@ class CanvasConnection:
                     if getattr(item, "content_id", None):  # missing when the file was deleted
                         file_links.setdefault(item.content_id, ("modules", title))
                 elif kind == "ExternalUrl":
-                    link = getattr(item, "external_url", "") or ""
-                    if self._is_own_link(link):
-                        for file_id in FILE_LINK.findall(link):
-                            file_links.setdefault(int(file_id), ("modules", title))
+                    for file_id in self._own_file_ids(getattr(item, "external_url", "") or ""):
+                        file_links.setdefault(file_id, ("modules", title))
                 elif kind == "Page" and getattr(item, "page_url", ""):
                     page_slugs.append(item.page_url)
-        return modules, file_links, page_slugs
+        return ModuleScan(modules, file_links, page_slugs)
 
     def _own_file_ids(self, text: str) -> list[int]:
-        """File ids in `text` (HTML) whose link is relative or on this Canvas. A link to another
-        site that happens to contain /files/<id> is not ours, so that id is never asked for."""
-        return [int(file_id) for start, file_id in FILE_URL.findall(text)
+        """File ids in `text` (HTML or a single link) whose link is relative or on this Canvas.
+        A link to another site that happens to contain /files/<id> is not ours, so that id is
+        never asked for."""
+        return [int(file_id) for start, file_id in FILE_LINK.findall(text)
                 if self._is_own_link(f"{start}/files/{file_id}")]
 
     def _is_own_link(self, link: str) -> bool:
