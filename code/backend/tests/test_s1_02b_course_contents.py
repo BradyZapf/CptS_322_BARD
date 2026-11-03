@@ -18,7 +18,7 @@ from bard.canvas_connection import (
     CanvasConnection,
     TokenRejected,
 )
-from bard.models import Announcement, Assignment, CourseFile, Page
+from bard.models import Announcement, Assignment, CourseFile, Page, Submission
 from bard.sync import SyncCoursework
 from fakes import (
     TOKEN,
@@ -313,3 +313,13 @@ def test_a_sync_saves_what_get_course_items_found(tmp_path, monkeypatch):
     [pdf] = (tmp_path / "FAKE-101" / "files").iterdir()
     assert pdf.read_bytes() == b"%PDF-1.4 fake"
     assert report.missed == []
+
+
+def test_a_submission_starts_with_no_attachments_and_can_hold_files():
+    # S2-12 saves the user's own handed-in files here, so the field is in the shared model now.
+    first = Submission(submission_id=1, submitted_at=None)
+    second = Submission(submission_id=2, submitted_at=None)
+    first.attachments.append(CourseFile(item_id=9, title="essay.pdf", course_code="FAKE-101"))
+
+    assert [f.title for f in first.attachments] == ["essay.pdf"]
+    assert second.attachments == []  # each submission has its own list
