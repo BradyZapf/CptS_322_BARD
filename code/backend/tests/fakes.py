@@ -11,8 +11,8 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from bard.canvas_connection import NotAvailable, TokenRejected
-from bard.models import Assignment, Course, CourseFile, CourseItem
+from bard.canvas_connection import LOCKED_REASON, CanvasUnreachable, NotAvailable, TokenRejected
+from bard.models import Assignment, Course, CourseFile, CourseItem, FileStatus
 
 URL = "https://canvas.example.edu"
 TOKEN = "fake-token-1234"
@@ -29,14 +29,25 @@ def assignment(i: int, course_code: str = "FAKE-101", due: datetime | None = Non
 
 
 class FakeConnection:
-    """Same methods as CanvasConnection, answers from memory."""
+    """Same methods as CanvasConnection, answers from memory.
+
+    S2-01 "FakeConnection fills both": first-seen time and file status are BARD's own, set by the
+    sync and the index, never sent by Canvas, so this fake does not invent them. It fills the
+    format by making every status reachable through a real sync: forbidden_files (blocked, 403),
+    missing_files (blocked, 404), locked_files, failing_files (failed). pdf(status=...) and
+    seen() build items already in the finished state."""
 
     def __init__(self, courses: dict[str, list[CourseItem]] | None = None,
                  reject_token: bool = False, forbidden_files: set[int] | None = None,
+                 locked_files: set[int] | None = None, missing_files: set[int] | None = None,
+                 failing_files: set[int] | None = None,
                  file_bytes: bytes = b"%PDF-1.4 fake"):
         self.courses = courses or {}
         self.reject_token = reject_token
         self.forbidden = forbidden_files or set()
+        self.locked = locked_files or set()  # Canvas describes them but gives no download link
+        self.missing = missing_files or set()  # Canvas answers 404
+        self.failing = failing_files or set()  # Canvas keeps failing after every retry
         self.file_bytes = file_bytes
         self.fetched: list[int] = []
 
@@ -55,12 +66,31 @@ class FakeConnection:
         self.fetched.append(file_id)
         if file_id in self.forbidden:
             raise NotAvailable("forbidden by the instructor (403)")
+        if file_id in self.missing:
+            raise NotAvailable("not found (404)")
+        if file_id in self.locked:
+            raise NotAvailable(LOCKED_REASON)
+        if file_id in self.failing:
+            raise CanvasUnreachable("cannot reach Canvas: Connection reset by peer")
         return self.file_bytes
 
 
-def pdf(i: int, size: int = 13) -> CourseFile:
+def pdf(i: int, size: int = 13, status: FileStatus | None = None, reason: str = "") -> CourseFile:
+    """A fake file. Leave status empty for a file the sync has not tried yet. Pass a status and
+    reason to build one as the sync would leave it, e.g. pdf(2, status=FileStatus.BLOCKED,
+    reason="forbidden by the instructor (403)")."""
     return CourseFile(item_id=i, title=f"Slides {i}", course_code="FAKE-101",
-                      file_name=f"slides{i}.pdf", linked_from="modules", size=size)
+                      file_name=f"slides{i}.pdf", linked_from="modules", size=size,
+                      status=status, status_reason=reason)
+
+
+FIRST_SEEN = datetime(2026, 9, 1, 12, 0, tzinfo=timezone.utc)
+
+
+def seen(item: CourseItem, when: datetime = FIRST_SEEN) -> CourseItem:
+    """The item with a first-seen time already set, as if an earlier sync had saved it."""
+    item.first_seen = when
+    return item
 
 
 # ---------------------------------------------------------------- raw Canvas JSON

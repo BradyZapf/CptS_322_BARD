@@ -57,6 +57,9 @@ class TokenRejected(Exception):
     """Canvas answered 401: the token is wrong, expired or revoked."""
 
 
+LOCKED_REASON = "locked by the instructor"  # sync.py reads this to give the file the status "locked"
+
+
 class NotAvailable(Exception):
     """Canvas refused one thing (403 forbidden or 404) without the whole sync failing.
     `reason` goes straight into the SyncReport (FR-04)."""
@@ -374,7 +377,7 @@ class CanvasConnection:
         """FR-03. Download one file by id and return its raw bytes.
 
         This works even when the instructor has hidden the Files tab.
-        Raises NotAvailable on a 403 or 404, and NotAvailable("locked by the instructor")
+        Raises NotAvailable on a 403 or 404, and NotAvailable(LOCKED_REASON)
         when Canvas describes the file but gives no download link.
         """
         # Step 1: ask Canvas about the file (name, size, download link). Not the file itself yet.
@@ -384,7 +387,7 @@ class CanvasConnection:
         # Step 2: a locked file still has a description, but no download link.
         download_url = getattr(canvas_file, "url", "")
         if not download_url:
-            raise NotAvailable("locked by the instructor")
+            raise NotAvailable(LOCKED_REASON)
 
         # Step 3: download the file. canvasapi's get_contents() sends a GET to the download link;
         # binary=True returns raw bytes, so PDFs and Word files are not mangled as text.

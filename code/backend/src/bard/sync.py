@@ -12,8 +12,14 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from .canvas_connection import CanvasConnection, CanvasUnreachable, NotAvailable, TokenRejected
-from .models import Course, CourseFile, CourseItem
+from .canvas_connection import (
+    LOCKED_REASON,
+    CanvasConnection,
+    CanvasUnreachable,
+    NotAvailable,
+    TokenRejected,
+)
+from .models import Course, CourseFile, CourseItem, FileStatus
 from .search_index import SearchIndex
 from .sync_report import SyncReport
 
@@ -90,6 +96,7 @@ class SyncCoursework:
         path.write_text(item.to_text(), encoding="utf-8")
         item.local_path = path.relative_to(self.archive).as_posix()
         report.record_saved(item.local_path)
+        self.index.stamp_first_seen(item)
         self.index.add_item(item)  # FR-06: the CLI searches <archive>/index.db
 
     def _save_file(self, course: Course, f: CourseFile, report: SyncReport) -> None:
@@ -97,19 +104,26 @@ class SyncCoursework:
         # alt [unchanged since last sync]: skip (NFR-03)
         if f.is_unchanged(path):
             f.local_path = path.relative_to(self.archive).as_posix()
+            f.status, f.status_reason = FileStatus.SAVED, "unchanged since the last sync"
+            self.index.stamp_first_seen(f)
             return
         # alt [new or changed]: fetchFile(fileId)
         try:
             data = self.connection.fetch_file(f.item_id)
         except NotAvailable as e:
+            f.status = FileStatus.LOCKED if e.reason == LOCKED_REASON else FileStatus.BLOCKED
+            f.status_reason = e.reason
             report.record_missed(f.file_name or f.title, e.reason)
             return
         except CanvasUnreachable as e:
+            f.status, f.status_reason = FileStatus.FAILED, str(e)
             report.record_missed(f.file_name or f.title, str(e))
             return
         path.write_bytes(data)
         if f.updated_at:  # remember Canvas's timestamp, so is_unchanged() can compare next time
             os.utime(path, (f.updated_at.timestamp(), f.updated_at.timestamp()))
         f.local_path = path.relative_to(self.archive).as_posix()
+        f.status, f.status_reason = FileStatus.SAVED, "downloaded"
+        self.index.stamp_first_seen(f)
         report.record_saved(f.local_path)
         # Planned for a later sprint: call f.extract_text(path) here to write the text beside the original.
