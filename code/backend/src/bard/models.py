@@ -129,6 +129,11 @@ class ModuleItem:
     title: str
     item_type: str  # Canvas's own word: "File", "Page", "Assignment", "ExternalUrl", "SubHeader", ...
     indent: int = 0  # how far Canvas indents it under a heading
+    # The id of the item it points at, the same item_id BARD saves that item under, so a module
+    # can be matched to its pages, files and assignments by id, not by title. None for headings
+    # and links.
+    item_id: int | None = None
+    page_url: str = ""  # a Page item's url name; Canvas sends this instead of the page's id
 
 
 @dataclass
@@ -138,7 +143,8 @@ class Module(CourseItem):
     items: list[ModuleItem] = field(default_factory=list)
 
     def to_text(self) -> str:
-        lines = [f"{'  ' * i.indent}- {i.title} ({i.item_type})" for i in self.items]
+        lines = [f"{'  ' * i.indent}- {i.title} ({i.item_type}"
+                 + (f" {i.item_id})" if i.item_id is not None else ")") for i in self.items]
         return f"# {self.title}\n\n" + "\n".join(lines) + "\n"
 
 

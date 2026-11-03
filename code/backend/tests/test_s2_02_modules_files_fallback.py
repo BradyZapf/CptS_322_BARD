@@ -29,7 +29,7 @@ def no_waiting(monkeypatch):
     monkeypatch.setattr(canvas_connection, "_sleep", lambda seconds: None)
 
 
-def serve(c, modules, files_tab="blocked", pages=(), pages_tab="ok"):
+def serve(c, modules, files_tab="blocked", pages=(), pages_tab="ok", assignments=()):
     """A course with these modules (module id -> its items). The Files tab answers 403 by default."""
     base = f"{URL}/api/v1/courses/{c.course_id}"
     responses.get(base, json={"id": c.course_id, "name": c.course_name})
@@ -44,7 +44,7 @@ def serve(c, modules, files_tab="blocked", pages=(), pages_tab="ok"):
         responses.get(f"{base}/pages", status=403, json=BLOCKED)
     else:
         responses.get(f"{base}/pages", json=list(pages))
-    responses.get(f"{base}/assignments", json=[])
+    responses.get(f"{base}/assignments", json=list(assignments))
     responses.get(f"{URL}/api/v1/announcements", json=[])
 
 
@@ -81,6 +81,81 @@ def test_a_module_saves_as_a_readable_markdown_file(archive):
     text = (archive / "FAKE-101" / "modules" / "Week 1-10.md").read_text(encoding="utf-8")
     assert text == "# Week 1\n\n- Intro (SubHeader)\n  - Slides (File)\n"
     assert module.first_seen is not None  # the S2-01 format applies to modules too
+
+
+@responses.activate
+def test_each_module_item_has_the_id_its_item_is_saved_under():
+    # Part B groups items by module, so it matches by id: titles repeat ("Learning Objectives").
+    c = course(1)
+    serve(c, {10: [canvas_json_module_item(1, title="Intro", kind="SubHeader"),
+                   canvas_json_module_item(2, file_id=5, title="Slides"),
+                   canvas_json_module_item(3, title="Read me", kind="Page", page_url="read-me"),
+                   canvas_json_module_item(4, file_id=30, title="HW 1", kind="Assignment"),
+                   canvas_json_module_item(5, title="Video", kind="ExternalUrl",
+                                           external_url="https://example.com/v")]},
+          pages=[canvas_json_page(7, "Read me") | {"url": "read-me"}])
+    responses.get(f"{URL}/api/v1/files/5", json=canvas_json_file(5))
+
+    (module,) = of_type(get_items(c), Module)
+
+    assert [(i.title, i.item_id) for i in module.items] == [
+        ("Intro", None), ("Slides", 5), ("Read me", 7), ("HW 1", 30), ("Video", None)]
+
+
+@responses.activate
+def test_a_quiz_or_graded_discussion_points_at_its_assignment_and_ungraded_ones_at_nothing():
+    # Canvas gives a Quiz item the quiz id and a Discussion item the topic id, but BARD saves
+    # them under their assignment's id. Ungraded ones have no assignment, so BARD saves nothing.
+    c = course(1)
+    quiz, graded = canvas_json_assignments(2)
+    quiz |= {"quiz_id": 77}
+    graded |= {"discussion_topic": {"id": 88}}
+    serve(c, {10: [canvas_json_module_item(1, file_id=77, title="Quiz 1", kind="Quiz"),
+                   canvas_json_module_item(2, file_id=88, title="Talk", kind="Discussion"),
+                   canvas_json_module_item(3, file_id=99, title="Poll", kind="Quiz"),
+                   canvas_json_module_item(4, file_id=98, title="Chat", kind="Discussion"),
+                   canvas_json_module_item(5, file_id=97, title="Tool", kind="ExternalTool")]},
+          assignments=[quiz, graded])
+
+    (module,) = of_type(get_items(c), Module)
+
+    assert [(i.title, i.item_id) for i in module.items] == [
+        ("Quiz 1", quiz["id"]), ("Talk", graded["id"]), ("Poll", None), ("Chat", None),
+        ("Tool", None)]
+
+
+@responses.activate
+def test_a_page_only_a_module_names_gets_its_id_from_the_page_canvas_sends():
+    c = course(1)
+    serve(c, {10: [canvas_json_module_item(1, title="Notes", kind="Page", page_url="notes")]},
+          pages_tab="blocked")
+    responses.get(f"{URL}/api/v1/courses/{c.course_id}/pages/notes",
+                  json=canvas_json_page(9, "Notes") | {"url": "notes"})
+
+    items = get_items(c)
+
+    assert of_type(items, Module)[0].items[0].item_id == 9 == of_type(items, Page)[0].item_id
+
+
+@responses.activate
+def test_a_page_canvas_refuses_has_no_id_in_its_module():
+    c = course(1)
+    serve(c, {10: [canvas_json_module_item(1, title="Hidden", kind="Page", page_url="hidden")]},
+          pages_tab="blocked")
+    responses.get(f"{URL}/api/v1/courses/{c.course_id}/pages/hidden", status=403, json=BLOCKED)
+
+    assert of_type(get_items(c), Module)[0].items[0].item_id is None
+
+
+def test_the_saved_module_file_shows_each_item_id(archive):
+    module = Module(item_id=10, title="Week 1", course_code="FAKE-101",
+                    items=[ModuleItem("Intro", "SubHeader"),
+                           ModuleItem("Slides", "File", indent=1, item_id=5)])
+
+    SyncCoursework(FakeConnection({"c1": [module]}), archive).sync()
+
+    text = (archive / "FAKE-101" / "modules" / "Week 1-10.md").read_text(encoding="utf-8")
+    assert text == "# Week 1\n\n- Intro (SubHeader)\n  - Slides (File 5)\n"
 
 
 @responses.activate

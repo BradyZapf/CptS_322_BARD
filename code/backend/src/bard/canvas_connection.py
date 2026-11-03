@@ -274,8 +274,8 @@ class CanvasConnection:
         course.syllabus = getattr(canvas_course, "syllabus_body", None) or ""
 
         # Step 2: assignments, pages and announcements, each turned into one of ours.
-        assignments = [self._assignment(a, course)
-                       for a in self._list_or_empty(canvas_course.get_assignments)]
+        canvas_assignments = self._list_or_empty(canvas_course.get_assignments)
+        assignments = [self._assignment(a, course) for a in canvas_assignments]
         # The plain page list leaves out each page's body, so ask for it.
         canvas_pages = self._list_or_empty(lambda: canvas_course.get_pages(include=["body"]))
         pages = [self._page(p, course) for p in canvas_pages]
@@ -287,8 +287,9 @@ class CanvasConnection:
 
         # Step 3: modules (S2-02). Their Page items may name pages the Pages list did not give.
         scan = self._modules(canvas_course, course)
-        pages += self._pages_only_in_modules(canvas_course, course, scan.page_slugs,
-                                             known_slugs={p.url for p in canvas_pages})
+        page_ids = {p.url: p.page_id for p in canvas_pages}  # url name -> page id
+        pages += self._pages_only_in_modules(canvas_course, course, scan.page_slugs, page_ids)
+        self._link_module_items(scan.modules, page_ids, canvas_assignments)
 
         # Step 4: files, from the places they can be found.
         html: list[tuple[str, str]] = [
@@ -327,7 +328,9 @@ class CanvasConnection:
                 item_id=canvas_module.id, title=getattr(canvas_module, "name", ""),
                 course_code=course.code,
                 items=[ModuleItem(title=getattr(i, "title", ""), item_type=getattr(i, "type", ""),
-                                  indent=getattr(i, "indent", 0) or 0) for i in items]))
+                                  indent=getattr(i, "indent", 0) or 0,
+                                  item_id=getattr(i, "content_id", None),
+                                  page_url=getattr(i, "page_url", "") or "") for i in items]))
             for item in items:
                 kind, title = getattr(item, "type", ""), getattr(item, "title", "")
                 if kind == "File":
@@ -339,6 +342,27 @@ class CanvasConnection:
                 elif kind == "Page" and getattr(item, "page_url", ""):
                     page_slugs.append(item.page_url)
         return ModuleScan(modules, file_links, page_slugs)
+
+    @staticmethod
+    def _link_module_items(modules: list[Module], page_ids: dict[str, int | None],
+                           canvas_assignments: list[CanvasAssignment]) -> None:
+        """Set each module entry's item_id to the id BARD saves its item under, or None when BARD
+        does not save it. Canvas's content_id is that id for files and assignments only. A page
+        is named by url name. A quiz or graded discussion is saved as its assignment, which
+        has a different id. Ungraded quizzes and discussions are not saved."""
+        by_quiz = {a.quiz_id: a.id for a in canvas_assignments if getattr(a, "quiz_id", None)}
+        by_topic = {a.discussion_topic["id"]: a.id for a in canvas_assignments
+                    if isinstance(getattr(a, "discussion_topic", None), dict)}
+        for module in modules:
+            for entry in module.items:
+                if entry.item_type == "Page":
+                    entry.item_id = page_ids.get(entry.page_url)
+                elif entry.item_type == "Quiz":
+                    entry.item_id = by_quiz.get(entry.item_id)
+                elif entry.item_type == "Discussion":
+                    entry.item_id = by_topic.get(entry.item_id)
+                elif entry.item_type not in ("File", "Assignment"):
+                    entry.item_id = None
 
     def _own_file_ids(self, text: str) -> list[int]:
         """File ids in `text` (HTML or a single link) whose link is relative or on this Canvas.
@@ -354,19 +378,21 @@ class CanvasConnection:
         return host == "" or host == urlparse(self.canvas_url).netloc
 
     def _pages_only_in_modules(self, canvas_course: CanvasCourse, course: Course,
-                               slugs: list[str], known_slugs: set[str]) -> list[Page]:
+                               slugs: list[str], page_ids: dict[str, int | None]) -> list[Page]:
         """A module can show a page the Pages list did not give (Pages tab switched off). A module
-        Page item carries only the page's url slug, so fetch each slug not already known. A page
-        Canvas refuses is skipped; the module still names it."""
+        Page item carries only the page's url slug, so fetch each slug not already in `page_ids`
+        (url slug -> page id), and add it there. A page Canvas refuses is skipped and its id
+        stays unknown (None); the module still names it."""
         found: list[Page] = []
         for slug in slugs:
-            if slug in known_slugs:
+            if slug in page_ids:
                 continue
-            known_slugs.add(slug)
+            page_ids[slug] = None
             try:
                 canvas_page = self._call(lambda slug=slug: canvas_course.get_page(slug))
             except NotAvailable:
                 continue
+            page_ids[slug] = canvas_page.page_id
             found.append(self._page(canvas_page, course))
         return found
 
