@@ -2,7 +2,7 @@
 
 Done means all of these are true. The pull request template has the checklist to tick.
 
-- `pytest code/backend/tests/test_s2_a_sync_and_coverage.py` passes
+- The test files `plan.md` lists for each item pass
 - `pytest` (everything) still passes
 - `ruff check .` is clean
 - `docs/TraceabilityMatrix.md` has a row for the new test file, so the traceability check passes

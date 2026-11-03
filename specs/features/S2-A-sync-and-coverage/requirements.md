@@ -27,7 +27,7 @@ Blocked and locked are the instructor's choice, so the report counts them as nor
 - Every item the sync saves has a first-seen time, timezone-aware UTC
 - The first-seen time is kept between runs: syncing the same item again, even in a new run, does not change it
 - Every file has one of the five statuses above and a reason in plain words
-- `FakeConnection` in `tests/fakes.py` fills both, so the other parts can build on it
+- `FakeConnection` in `tests/fakes.py` can block, lock and drop files, so a sync in the tests reaches every status and the other parts can build on it
 
 ## S2-02 Modules sync
 
