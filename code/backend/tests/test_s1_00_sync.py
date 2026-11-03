@@ -3,8 +3,19 @@
 These pass on day one: SyncCoursework and SyncReport are built in the scaffold.
 """
 
+from bard.canvas_connection import CanvasUnreachable
 from bard.sync import SyncCoursework, safe_name
 from fakes import FakeConnection, assignment, pdf
+
+
+class DroppedConnectionOnOneFile(FakeConnection):
+    """Canvas drops the connection while downloading file 2, then answers normally."""
+
+    def fetch_file(self, file_id: int) -> bytes:
+        if file_id == 2:
+            self.fetched.append(file_id)
+            raise CanvasUnreachable("cannot reach Canvas: Connection reset by peer")
+        return super().fetch_file(file_id)
 
 
 def test_rejected_token_saves_nothing(archive):
@@ -25,6 +36,14 @@ def test_forbidden_file_is_reported_with_reason(archive):
     report = SyncCoursework(conn, archive).sync()
     assert (archive / "FAKE-101" / "files" / "slides1-1.pdf").exists()
     assert "forbidden" in report.summarize()
+
+
+def test_a_dropped_download_is_reported_and_the_rest_are_saved(archive):
+    # FR-04: one broken download must not stop the sync
+    report = SyncCoursework(DroppedConnectionOnOneFile({"c1": [pdf(1), pdf(2), pdf(3)]}), archive).sync()
+    assert (archive / "FAKE-101" / "files" / "slides1-1.pdf").exists()
+    assert (archive / "FAKE-101" / "files" / "slides3-3.pdf").exists()
+    assert "Connection reset by peer" in report.summarize()
 
 
 def test_unchanged_file_is_not_downloaded_twice(archive):
