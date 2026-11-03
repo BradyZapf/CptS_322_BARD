@@ -63,10 +63,10 @@ Done when:
 | S2-09 | Basic web security tests for the page | Low | 2 | NFR-05 | |
 
 Done when:
-- **S2-06:** the page runs on the user's own computer and is reachable only from it; the address carries a secret that is new at every start; it lists every course in the archive, and opening a course lists its items grouped by module, in the order of the modules (this uses S2-02); opening an item shows its text; an empty archive shows "nothing downloaded yet" instead of an error.
+- **S2-06:** the page runs on the user's own computer and is reachable only from it; the address carries a secret that is new at every start; it lists every course in the archive, and opening a course lists its items grouped by module, in the order of the modules (this uses S2-02), matching each module entry to its item by id, never by title; opening an assignment, page or announcement shows its formatted text with scripts removed; opening a file opens the original (PDFs and png, jpg, gif and webp images in the browser, every other type downloads, with nosniff and a Content-Security-Policy); an empty archive shows "nothing downloaded yet" instead of an error.
 - **S2-07:** the search box uses the existing search; each result shows the course and the item it came from, with a link to it; an empty search, a lone quote, or a word like AND shows a message and never crashes; a search with no match says so.
 - **S2-08:** tests show that adding an item again replaces it, the best match comes first, the limit is respected, odd queries such as `late AND -work` or a lone quote do not crash, a page and an announcement with the same id do not overwrite each other, and a sync indexes what it saves (a word from the fake syllabus is found after a sync).
-- **S2-09:** tests show that searching for SQL injection text such as `' OR 1=1 --` or `"; DROP TABLE docs; --` returns normal results or none and leaves the index intact; an address containing `../` (plain or encoded) is refused and nothing outside the archive is served; a course title such as `<script>alert(1)</script>` shows as plain text and does not run; a request without the right secret in the address is refused; the page answers only reads, and a POST, PUT or DELETE is refused.
+- **S2-09:** tests show that searching for SQL injection text such as `' OR 1=1 --` or `"; DROP TABLE docs; --` returns normal results or none and leaves the index intact; an address containing `../` (plain or encoded) is refused and nothing outside the archive is served; a course title such as `<script>alert(1)</script>` shows as plain text and does not run; an uploaded .svg or .html file containing `<script>` downloads instead of showing, with nosniff and the Content-Security-Policy; a request without the right secret in the address is refused; the page answers only reads, and a POST, PUT or DELETE is refused.
 
 ### Part C: file work
 
@@ -77,9 +77,9 @@ Done when:
 | S2-12 | Download the user's own submission files | Medium | 3 | FR-03 | |
 
 Done when:
-- **S2-10:** a text PDF and a Word file each get a .md copy beside the original, and the original is kept; search finds a phrase that exists only inside one of them; a second sync does not rewrite the .md of an unchanged file; files that are not PDF or Word are left alone.
-- **S2-11:** an image-only PDF and a password-locked PDF are marked unreadable with a reason, the original is kept and no .md is written; a damaged file does not stop the sync; unreadable files are listed in the report.
-- **S2-12:** the files on the user's own submissions are saved with the assignment they belong to; only the user's own submission is requested, never anyone else's; a file that cannot be saved gets a status and a reason; the test fake covers a submission with a file and one without.
+- **S2-10:** a text PDF and a Word file each get a .md copy beside the original, and the original is kept; search finds a phrase that exists only inside one of them; a second sync does not rewrite the .md of an unchanged file; when a re-upload keeps an earlier copy, its .md is kept under the earlier copy's name so search still finds the old text; files that are not PDF or Word are left alone.
+- **S2-11:** an image-only PDF and a password-locked PDF are marked unreadable with a reason, the original is kept and no .md is written; a damaged file does not stop the sync; unreadable files are listed in the report; on a later sync an unchanged unreadable file is still reported as unreadable (re-checked from the saved original, PDF and Word only, no new download).
+- **S2-12:** the files on the user's own submissions are saved with the assignment they belong to and listed in `Submission.attachments` (added in #34, so no `models.py` change); only the user's own submission is requested, never anyone else's; a file that cannot be saved gets a status and a reason; the test fake covers a submission with a file and one without.
 
 ### Part D: errors, connect, erase, guide file and test fake
 
@@ -88,14 +88,14 @@ Done when:
 | S2-13 | Clear messages for Canvas errors ([#17](https://github.com/BradyZapf/CptS_322_BARD/issues/17), carried over from Sprint 1) | High | 2 | FR-01 | |
 | S2-14 | Erase follow-ups ([#14](https://github.com/BradyZapf/CptS_322_BARD/issues/14), carried over from Sprint 1) | Medium | 2 | FR-10 | |
 | S2-15 | Guide file for coding agents (README-for-AI.md) | Medium | 2 | FR-09 | |
-| S2-16 | Improve the test fake so it can simulate more of Canvas | Medium | 3 | | |
+| S2-16 | A test harness: one fake Canvas for every test | Medium | 5 | | |
 | S2-17 | Connect with a saved token: already connected, replace and disconnect | Medium | 2 | FR-01 | |
 
 Done when:
-- **S2-13:** in `connect`, a wrong token, a 403, a 500 and an unreachable Canvas each print one plain message and no traceback; in `sync`, a wrong token or a lost connection or timeout stops with one plain message, while a 5xx or 429 on one part marks that part error and the rest carries on; no message contains the token; tests cover each case.
+- **S2-13:** in `connect`, a wrong token, a 403, a 500 and an unreachable Canvas each print one plain message and no traceback; in `sync`, a token Canvas rejects partway through stops with one plain message and no traceback, and files already saved stay (Part A already marks a failing part or course as error and carries on); no message contains the token; tests cover each case.
 - **S2-14:** the reminder to revoke the token is shown whenever the token may still work, including when erase could not remove everything; the message after a refusal says nothing was removed and does not call the erase partial; tests cover an archive that cannot be removed, a token file that cannot be removed, and an archive that is already gone; erase also removes the new files (the .md copies and the guide file).
-- **S2-15:** after a sync, `README-for-AI.md` exists at the archive root; it explains how files are laid out and named, what each file status means, and to use `bard search`; it contains no token and no coursework text.
-- **S2-16:** the fake Canvas in `tests/fakes.py` can simulate a blocked Files tab, a locked file, a file that changes between two syncs, a text PDF, a scanned PDF, a password-locked PDF, a Word file, a submission with a file, and the Canvas errors 403, 500 and unreachable; each one has a short test showing it works; the existing tests still pass; the fake holds no real Canvas data.
+- **S2-15:** after a sync, `README-for-AI.md` exists at the archive root; it explains how files are laid out and named, what each file status means, and to use `bard search`, plus the `modules/` folder and module ids, first-seen times, earlier copies of re-uploaded files and the coverage report; status names match `FileStatus`; it contains no token and no coursework text.
+- **S2-16:** one `FakeCanvas` in `tests/fakes.py`, described in code and served through the real `CanvasConnection`, can simulate a blocked tab, modules, a file that changes between two syncs, a text PDF, a scanned PDF, a password-locked PDF, a Word file, a submission with a file, and the Canvas errors 403, 404, 429, 500 and unreachable; each one has a short test showing it works; the existing tests still pass; it holds no real Canvas data. Moving the existing tests onto it is PB-06.
 - **S2-17:** `connect` with a saved token does not ask again and says it is already connected, and how to replace or remove the token; `connect --replace` puts in a new token and keeps the old one if Canvas rejects the new one; `disconnect` removes only the token and leaves the archive; a rejected saved token says it expired or was removed and gives the command to put in a new one; tests cover each.
 
 ### Carried over from Sprint 1: re-estimates
@@ -122,3 +122,4 @@ Process items from the Sprint 1 retrospective:
 | PB-03 | Keep both versions when an instructor replaces a file | FR-03 | Low | The sync overwrites the first copy of a changed file (`_save_file` in `sync.py`) |
 | PB-04 | Sync on a schedule the user sets, so BARD does not have to be opened | FR-02 | Low | Team idea. Needs a decision on how the token is used when BARD is not open (mission rule 5) and on a scheduler for each of the three systems (NFR-07) |
 | PB-05 | Grade watcher: watch one grade (an assignment, exam or project) and get told when it is posted | none yet (needs a new FR) | Low | Team idea. One small request for the user's own submission (`/courses/<c>/assignments/<a>/submissions/self`), repeated on an interval the user sets, and a notice when the grade or score appears or changes. The user picks the item, how often, and what to be told about. Shares PB-04's open question about using the token while BARD is not open |
+| PB-06 | Move the existing tests onto the S2-16 test harness, so their setup code shrinks | none (tests only) | Low | Deferred from S2-16 to keep Sprint 2 small; the S1-02a and S2-02 tests have the most hand-written Canvas setup |
