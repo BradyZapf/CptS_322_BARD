@@ -9,7 +9,13 @@ import requests
 from pypdf import PasswordType, PdfReader
 
 from bard import canvas_connection
-from bard.canvas_connection import LOCKED_REASON, CanvasUnreachable, NotAvailable, TokenRejected
+from bard.canvas_connection import (
+    LOCKED_REASON,
+    QUOTA_WAIT_MAX,
+    CanvasUnreachable,
+    NotAvailable,
+    TokenRejected,
+)
 from bard.models import CourseFile, Module, Page
 from fakes import (
     TOKEN,
@@ -240,7 +246,8 @@ def test_a_429_twice_is_retried_and_then_succeeds(fc):
     fc.fail(429, path=f"/api/v1/files/{f.file_id}", times=2)
 
     assert fc.connection().fetch_file(f.file_id) == b"slides"
-    assert fc.waits == [1.0, 2.0]
+    # Each retry wait (1, 2) is followed by the quota wait: the 429 says no quota is left (S2-05).
+    assert fc.waits == [1.0, QUOTA_WAIT_MAX, 2.0, QUOTA_WAIT_MAX]
 
 
 @pytest.mark.parametrize("status, problem", [(429, "rate limited (429)"), (500, "Canvas server error (500)")])
@@ -252,7 +259,11 @@ def test_a_429_or_500_that_keeps_coming_gives_up_after_every_retry(fc, status, p
         fc.connection().fetch_file(f.file_id)
 
     assert str(broken.value) == f"gave up after 5 tries: {problem}"
-    assert fc.waits == [1.0, 2.0, 4.0, 8.0]
+    retries = [1.0, 2.0, 4.0, 8.0]
+    if status == 429:  # the 429 says no quota is left, so each retry also waits for it (S2-05)
+        assert fc.waits == [w for retry in retries for w in (retry, QUOTA_WAIT_MAX)]
+    else:  # a 500 says nothing about the quota
+        assert fc.waits == retries
 
 
 def test_an_unreachable_canvas_fails_at_once_with_no_token_in_the_message(fc):
