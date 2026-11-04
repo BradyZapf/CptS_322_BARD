@@ -283,8 +283,12 @@ def test_a_fault_on_one_path_leaves_the_others_alone(fc):
     c.page("Welcome")
     fc.fail(500, path="/api/v1/courses/1001/pages")
 
-    with pytest.raises(CanvasUnreachable):
-        items_of(fc, c)
+    conn = fc.connection()
+    items = conn.get_course_items(c.as_course())
+    # S2-03: the pages that kept failing are one error part; the rest of the course still comes back
+    assert conn.part_results["pages"] == "error: gave up after 5 tries: Canvas server error (500)"
+    assert [f.title for f in of_type(items, CourseFile)] == ["week1.pdf"]
+    assert of_type(items, Page) == []
     assert fc.connection().get_courses()[0].code == "FAKE-101"
 
 
