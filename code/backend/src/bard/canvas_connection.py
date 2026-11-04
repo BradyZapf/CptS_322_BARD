@@ -291,9 +291,11 @@ class CanvasConnection:
         canvasapi follows every next-page link.
 
         A part of the course the instructor switched off (Files tab hidden, Pages turned off)
-        answers NotAvailable. That part is skipped and the rest is still returned. TokenRejected
-        and CanvasUnreachable are not caught here: they reach the sync, which
-        reports an unreachable course as missed and goes on to the next one.
+        answers NotAvailable. That part is skipped and the rest is still returned. A part that
+        still fails after every retry is recorded as an error in part_results, and the other
+        parts are still read (S2-03). If every part failed, Canvas is down for this course:
+        CanvasUnreachable reaches the sync, which reports the course as missed. TokenRejected
+        is not caught here either.
 
         Modules come back too, each with its items (S2-02). Files are found three ways and kept
         once each: the Files list, module items of type File, and /files/<id> links in the HTML
@@ -342,6 +344,9 @@ class CanvasConnection:
             pages.append(Page(item_id=course.course_id, title="Syllabus", course_code=course.code,
                               body=course.syllabus))
 
+        errors = [r for r in self.part_results.values() if r.startswith("error: ")]
+        if errors and len(errors) == len(self.part_results):
+            raise CanvasUnreachable(errors[0].removeprefix("error: "))
         return [*scan.modules, *assignments, *announcements, *pages, *files]
 
     def _list_or_empty(self, part: str | None, fn: Callable[[], Iterable[T]]) -> list[T]:
@@ -358,9 +363,19 @@ class CanvasConnection:
             if part:
                 self.part_results[part] = f"blocked: {e.reason}"
             return []
+        except CanvasUnreachable as e:
+            if not part:
+                raise
+            self._part_failed(part, e)
+            return []
         if part:
             self.part_results[part] = "ok" if result else "empty"
         return result
+
+    def _part_failed(self, part: str, e: CanvasUnreachable) -> None:
+        """S2-03. A read inside `part` still failed after every retry: the coverage report shows
+        that part as error with this reason, and the rest of the course is still read."""
+        self.part_results[part] = f"error: {e}"
 
     def _modules(self, canvas_course: CanvasCourse, course: Course) -> ModuleScan:
         """S2-02. Every module with its items in Canvas's order, read once, plus what they point
@@ -369,7 +384,11 @@ class CanvasConnection:
         file_links: dict[int, tuple[str, str]] = {}
         page_slugs: list[str] = []
         for canvas_module in self._list_or_empty("modules", canvas_course.get_modules):
-            items = self._list_or_empty(None, canvas_module.get_module_items)
+            try:
+                items = self._list_or_empty(None, canvas_module.get_module_items)
+            except CanvasUnreachable as e:
+                self._part_failed("modules", e)
+                items = []
             modules.append(Module(
                 item_id=canvas_module.id, title=getattr(canvas_module, "name", ""),
                 course_code=course.code,
@@ -438,6 +457,9 @@ class CanvasConnection:
                 canvas_page = self._call(lambda slug=slug: canvas_course.get_page(slug))
             except NotAvailable:
                 continue
+            except CanvasUnreachable as e:
+                self._part_failed("pages", e)
+                continue
             page_ids[slug] = canvas_page.page_id
             found.append(self._page(canvas_page, course))
         return found
@@ -470,6 +492,10 @@ class CanvasConnection:
         """Look up a file known only by its id (from a module or a link)."""
         try:
             canvas_file = self._call(lambda: canvas.get_file(file_id))
+        except CanvasUnreachable as e:
+            self._part_failed("files", e)
+            return CourseFile(item_id=file_id, title=title or f"file {file_id}",
+                              course_code=course.code, linked_from=where)
         except NotAvailable:
             # Still list it: the sync's fetch_file then records it as missed, with the reason,
             # instead of the file silently disappearing (mission rule 8: honest reporting).

@@ -115,13 +115,15 @@ class SyncCoursework:
     def _note_part_outcomes(self, course: Course, report: SyncReport) -> None:
         """What each tab answered, for the coverage report. A connection that does not say (the
         fake one) leaves the report to derive it from the items. Only what the items cannot show
-        is kept: a switched-off tab, and modules that came back empty. A switched-off tab stays
+        is kept: a switched-off tab, a part that kept failing, and modules that came back empty. A switched-off tab stays
         blocked even when its files or pages were found another way (S2-03); the report says how
         many were still saved."""
         results = getattr(self.connection, "part_results", None) or {}
         for part, result in results.items():
             if result.startswith("blocked"):
                 report.part_outcomes[(course.code, part)] = ("blocked", result.removeprefix("blocked: "))
+            elif result.startswith("error"):  # still failing after every retry (S2-03)
+                report.part_outcomes[(course.code, part)] = ("error", result.removeprefix("error: "))
             elif part == "modules" and result == "empty":
                 report.part_outcomes[(course.code, part)] = ("empty", "")
 

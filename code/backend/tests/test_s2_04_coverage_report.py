@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 
 from bard import cli
 from bard.coverage_report import BLOCKED_IS_NORMAL, Outcome, build_coverage, render
-from bard.models import Course, FileStatus, Page
+from bard.models import Course, CourseFile, FileStatus, Page
 from bard.sync import SyncCoursework
 from bard.user import User
 from fakes import FakeConnection, assignment, course, pdf, seen
@@ -395,3 +395,70 @@ def test_an_unknown_outcome_shows_as_an_error_with_its_text_kept():
                                  {(c.code, "pages"): ("weird", "no idea")}))
     assert table_row(text, "FAKE-101")[4] == "error"
     assert section(text, "Problems") == ["  FAKE-101  pages: unknown outcome 'weird': no idea"]
+
+
+# ---------------------------------------- S2-03: one part that keeps failing is one error cell
+
+from fakes import canvas_json_assignments  # noqa: E402
+
+DOWN = {"errors": [{"message": "Service Unavailable"}]}
+
+
+def report_text(report):
+    return render(build_coverage(report.courses, report.missed, report.sync_date, report.part_outcomes))
+
+
+@responses.activate
+def test_a_part_that_keeps_failing_is_an_error_cell_and_the_other_parts_are_saved(archive, no_waiting):
+    c = course(1)
+    serve(c, {}, files_tab="ok", assignments=canvas_json_assignments(2))
+    responses.replace(responses.GET, f"{URL}/api/v1/courses/{c.course_id}/pages", status=503, json=DOWN)
+    report = SyncCoursework(OneCourse([c]), archive).sync()
+    text = report_text(report)
+    assert report.missed == []  # the course itself was not lost
+    assert table_row(text, "FAKE-101") == ["FAKE-101", "empty", "empty", "ok", "error", "empty"]
+    problems = section(text, "Problems")
+    assert len(problems) == 1 and problems[0].startswith("  FAKE-101  pages: gave up after 5 tries")
+    assert len(list((archive / "FAKE-101" / "assignments").iterdir())) == 2  # still saved
+
+
+@responses.activate
+def test_a_module_whose_items_keep_failing_makes_modules_an_error(archive, no_waiting):
+    c = course(1)
+    serve(c, {10: []}, files_tab="ok", assignments=canvas_json_assignments(1))
+    responses.replace(responses.GET, f"{URL}/api/v1/courses/{c.course_id}/modules/10/items",
+                      status=503, json=DOWN)
+    report = SyncCoursework(OneCourse([c]), archive).sync()
+    text = report_text(report)
+    assert table_row(text, "FAKE-101")[2:4] == ["error", "ok"]  # modules error, assignments ok
+    assert section(text, "Problems")[0].startswith("  FAKE-101  modules: gave up after 5 tries")
+
+
+@responses.activate
+def test_a_linked_file_that_keeps_failing_makes_files_an_error_and_is_still_listed(archive, no_waiting):
+    c = course(1)
+    serve(c, {10: [canvas_json_module_item(1, file_id=5, title="Slides")]}, files_tab="ok")
+    responses.get(f"{URL}/api/v1/files/5", status=503, json=DOWN)
+    report = SyncCoursework(OneCourse([c]), archive).sync()
+    text = report_text(report)
+    assert table_row(text, "FAKE-101")[1] == "error"
+    assert any(line.startswith("  FAKE-101  files: gave up after 5 tries")
+               for line in section(text, "Problems"))
+    assert [f.item_id for f in report.courses[0].items if isinstance(f, CourseFile)] == [5]
+
+
+@responses.activate
+def test_a_course_where_every_part_fails_is_unreachable_and_counts_toward_giving_up(archive, no_waiting):
+    # Canvas answers the course itself, then fails every part: still one unreachable course,
+    # so PR 3's "stop after 2 in a row" works and does not wait through every part of every course.
+    courses = [course(1), course(2), course(3)]
+    for c in courses:
+        base = f"{URL}/api/v1/courses/{c.course_id}"
+        responses.get(base, json={"id": c.course_id, "name": c.course_name})
+        for kind in ("assignments", "pages", "modules", "files"):
+            responses.get(f"{base}/{kind}", status=503, json=DOWN)
+    responses.get(f"{URL}/api/v1/announcements", status=503, json=DOWN)
+    report = SyncCoursework(OneCourse(courses), archive).sync()
+    assert [code for code, _ in report.missed] == ["FAKE-101", "FAKE-202", "FAKE-303"]
+    assert report.missed[0][1].startswith("gave up after 5 tries")
+    assert report.missed[2][1] == "not tried: Canvas was unreachable for 2 courses in a row"
