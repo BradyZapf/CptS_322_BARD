@@ -309,7 +309,7 @@ def test_a_sync_saves_what_get_course_items_found(tmp_path, monkeypatch):
     report = SyncCoursework(CanvasConnection(URL, TOKEN), tmp_path).sync()
 
     saved = {p.split("/")[1] for p in report.entries}
-    assert saved == {"assignments", "files"}
+    assert saved == {"assignments", "files", "modules"}  # S2-02: the module is saved too
     [pdf] = (tmp_path / "FAKE-101" / "files").iterdir()
     assert pdf.read_bytes() == b"%PDF-1.4 fake"
     assert report.missed == []
