@@ -26,3 +26,22 @@ No file under `code/backend/src/` changes.
 - Submissions: the fake answers `/courses/:id/assignments/:id/submissions/self`, but `CanvasConnection` does not ask for submissions until S2-12. Until then, the test for it calls that URL directly.
 - The fake does not split long lists into pages (no `Link` headers).
 - Moving the existing tests onto the harness is PB-06.
+
+## S2-17 Connect with a saved token
+
+**Files**
+
+- `code/backend/src/bard/cli.py`: `connect` checks for a saved token first and takes `--replace`. Adds a new `disconnect` command. `sync` prints one plain message when Canvas rejects the saved token.
+- `code/backend/src/bard/user.py`: `disconnect()` removes the token file and nothing else. It returns False if no token was saved. It is a helper like `load_connection()`, and like that one it is not in the class diagram.
+- `code/backend/src/bard/sync.py`: if Canvas rejects the token partway through (a 401 while reading a course or downloading a file), the sync stops and records `TOKEN_REJECTED`; it no longer crashes with a traceback. Files already saved stay. The sequence diagram's order is unchanged.
+- `code/backend/tests/test_s1_01_connect.py`: the tests, using `FakeCanvas` from S2-16.
+
+**How it works**
+
+- `connect` with a saved token prints the saved address, then the two commands. It calls neither `input` nor Canvas.
+- `connect --replace` uses `connect_canvas()`, which saves only after `verify_token()` passes. So a rejected or unreachable new token leaves the old file byte-for-byte unchanged.
+- `sync` looks for `TOKEN_REJECTED` among the report's missed reasons. If it finds it, it prints the "expired or was removed" message and `bard connect --replace`, plus how many items were kept, and exits with 1. No message contains the token.
+
+**Depends on** S2-16 (`FakeCanvas`). This PR is stacked on #53.
+
+**Overlap with S2-13:** a token rejected partway through a sync is also an S2-13 bullet, and this item covers it. Not covered here: plain `connect` still prints "Canvas rejected that token." when Canvas is unreachable. That message is S2-13's to fix.

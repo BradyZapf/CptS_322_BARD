@@ -23,7 +23,10 @@ from .models import Course, CourseFile, CourseItem, FileStatus
 from .search_index import SearchIndex
 from .sync_report import SyncReport
 
-WINDOWS_RESERVED = {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)),
+# The reason a sync records when Canvas stops accepting the token. The CLI looks for it (S2-17).
+TOKEN_REJECTED = "Canvas rejected the access token"
+
+WINDOWS_RESERVED ={"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)),
                     *(f"LPT{i}" for i in range(1, 10))}
 
 
@@ -59,28 +62,34 @@ class SyncCoursework:
         try:
             self.connection.verify_token()
         except TokenRejected:
-            report.record_missed("everything", "Canvas rejected the access token")
+            report.record_missed("everything", TOKEN_REJECTED)
             return report
 
         # 1.1.3 getCourses(term), 1.1.3.1 createCourse
         try:
             courses = self.connection.get_courses(term)
         except (TokenRejected, NotAvailable) as e:
-            report.record_missed("course list", getattr(e, "reason", "Canvas rejected the access token"))
+            report.record_missed("course list", getattr(e, "reason", TOKEN_REJECTED))
             return report
         for course in courses:
-            # getCourseItems(course): every page of results (sequence diagram)
             try:
-                items = self.connection.get_course_items(course)
-            except NotAvailable as e:
-                report.record_missed(course.code, e.reason)
-                continue
-            for item in items:
-                if isinstance(item, CourseFile):
-                    self._save_file(course, item, report)  # 1.1.3.1.1 createCourseFile
-                else:
-                    self._save_text(course, item, report)  # an assignment, page or announcement
-                course.items.append(item)
+                # getCourseItems(course): every page of results (sequence diagram)
+                try:
+                    items = self.connection.get_course_items(course)
+                except NotAvailable as e:
+                    report.record_missed(course.code, e.reason)
+                    continue
+                for item in items:
+                    if isinstance(item, CourseFile):
+                        self._save_file(course, item, report)  # 1.1.3.1.1 createCourseFile
+                    else:
+                        self._save_text(course, item, report)  # an assignment, page or announcement
+                    course.items.append(item)
+            except TokenRejected:
+                # The token stopped working partway (expired or revoked in Canvas). Every later
+                # call would fail too, so stop here. What is already saved stays (S2-17).
+                report.record_missed(course.code, TOKEN_REJECTED)
+                return report
 
         # 1.1.4 summarize() happens in the UI, which calls report.summarize()
         return report

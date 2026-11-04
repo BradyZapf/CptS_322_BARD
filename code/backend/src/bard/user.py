@@ -70,6 +70,15 @@ class User:
 
         return self.connection
 
+    def disconnect(self) -> bool:
+        """S2-17. Remove the saved token file and nothing else: the archive stays. False if no
+        token was saved. An OSError from removing the file is left for the caller to report."""
+        if not self.config_file.exists():
+            return False
+        self.config_file.unlink()
+        self.connection = None
+        return True
+
     def load_courses(self) -> None:
         """NFR-02 (S1-03a). Reconstruct self.courses from the archive on disk.
 
