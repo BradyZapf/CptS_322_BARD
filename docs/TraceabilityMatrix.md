@@ -15,6 +15,7 @@ from this table, so add a row when you add either.
 | FR-04 | Coverage report | Report coverage | SyncReport | coverage_report | test_s1_00_sync (part) | S1-00 |
 | FR-05 | Deadlines in my own timezone | View upcoming work | Assignment | deadlines_in_my_own_timezone | test_s1_03_upcoming | S1-03 |
 | — | Load courses from archive (helper, no FR) | View upcoming work | User, Course, Assignment | loading_courses_from_archive | test_s1_03a_load_courses | S1-03a |
+| — | Test harness: one fake Canvas (tests only, no FR) | — | CanvasConnection | — | test_s2_d_fakes | S2-16 |
 | FR-06 | Searching in plain language | Search coursework | SearchIndex, Passage, CourseItem | searching_in_plain_language | test_s1_04_search | S1-04 |
 | FR-07 | What is due next | View upcoming work | User, Course, Assignment | what_is_due_next | test_s1_03_upcoming | S1-03 |
 | FR-08 | Exporting part of the archive | Export coursework | Exporter, CourseItem | exporting_part_of_the_archive |  |  |
