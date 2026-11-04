@@ -23,6 +23,6 @@ Description of key interfaces between components.
 * Files and pages are still found through modules and `/files/<id>` links in assignment, page, announcement and syllabus text (S2-02, FR-03)
 * A link is followed only when it is relative or on the same Canvas, so a link to another site never makes BARD ask for an unrelated file (FR-03)
 * A file counts as missing only if Canvas still links it today, so a page the instructor edited to point at a new copy leaves no gap (S2-03, FR-04)
-* When an instructor re-uploads a file, BARD keeps the earlier version beside the new one, and a failed write leaves the old copy untouched (PB-03, FR-03)
+* When an instructor re-uploads a file, BARD keeps the earlier version beside the new one, and a failed write leaves the old copy untouched (S2-19, FR-03)
 * A sync with no term set pulls every active enrollment, including non-class hub courses such as the advising and resource hubs, because they hold things a student uses (FR-02)
-* Discussions, the user's own submission files and text from PDF and Word files are separate stories, not part of the Part A sync (S2-18, S2-12, S2-10)
+* The user's own submission files and text from PDF and Word files are separate stories, not part of the Part A sync (S2-12, S2-10). Discussions moved to the product backlog for Sprint 3 (PB-07)
