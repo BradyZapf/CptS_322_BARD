@@ -15,6 +15,8 @@ import getpass
 import sys
 from datetime import datetime, timezone
 
+import requests
+
 from .search_index import SearchIndex
 from .sync import TOKEN_REJECTED, SyncCoursework
 from .user import User
@@ -62,10 +64,17 @@ def connect(user: User, replace: bool) -> int:
         return 0
     url = input("Canvas address (e.g. https://wsu.instructure.com): ")
     token = getpass.getpass("Access token: ")
-    if user.connect_canvas(url, token):
+    try:
+        accepted = user.connect_canvas(url, token)
+    except (requests.ConnectionError, requests.Timeout):
+        # #60: the token was never checked, so do not say Canvas rejected it
+        print(f"Could not reach Canvas at {url}. Check the address and your internet connection.")
+        accepted = None
+    if accepted:
         print("Connected.")
         return 0
-    print("Canvas rejected that token.")
+    if accepted is False:
+        print("Canvas rejected that token.")
     if saved is not None:
         print("The new token was not saved; your old token is still saved.")
     return 1
