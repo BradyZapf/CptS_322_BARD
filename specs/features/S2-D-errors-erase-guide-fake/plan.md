@@ -35,6 +35,7 @@ No file under `code/backend/src/` changes.
 - `code/backend/src/bard/user.py`: `disconnect()` removes the token file and nothing else. It returns False if no token was saved. It is a helper like `load_connection()`, and like that one it is not in the class diagram.
 - `code/backend/src/bard/sync.py`: if Canvas rejects the token partway through (a 401 while reading a course or downloading a file), the sync stops and records `TOKEN_REJECTED`; it no longer crashes with a traceback. Files already saved stay. The sequence diagram's order is unchanged.
 - `code/backend/tests/test_s1_01_connect.py`: the tests, using `FakeCanvas` from S2-16.
+- `docs/Reports/02_Design.md`: two design decisions. `docs/Reports/03_TestPlan.md`: hand tests TC-8 to TC-11.
 
 **How it works**
 

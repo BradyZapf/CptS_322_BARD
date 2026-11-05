@@ -22,6 +22,10 @@ Unit / integration / end-to-end approach.
 | TC-5 | A file the instructor forbids | A page links a file that answers 403 | The file is listed as blocked with its reason, not dropped | Pass: one MATH 172 file answered 403 on both dates and was listed as blocked with its reason |
 | TC-6 | Renamed or replaced items | A page renamed, or a module file replaced at the same position | The current version is saved; the old one is not reported as missing | Pass: checked live, the old page address redirects to the renamed page |
 | TC-7 | Quota header | Read one Canvas answer | Canvas sends `X-Rate-Limit-Remaining`, so the quota wait (S2-05) has something to read | Pass: a full quota reads 700.0 and one request cost about 0.08. A normal sync never got near the limit of 100, so the wait itself has only run in the tests. |
+| TC-8 | Connect with a saved token (S2-17) | With `BARD_HOME` and `BARD_CONFIG` set to throwaway folders, connect with a real token, then run `bard connect` again | It asks for nothing, makes no call to Canvas, and says "Already connected to", the address, and the replace and disconnect commands | Not run yet |
+| TC-9 | Replace with a wrong token (S2-17) | `bard connect --replace` and type a wrong token | Canvas rejects it, and the old token is still saved and still works | Not run yet |
+| TC-10 | Saved token no longer accepted (S2-17) | Replace the saved token in the config file with a bad one, then `bard sync` | One message saying the token expired or was removed, with `bard connect --replace`, and no traceback | Not run yet |
+| TC-11 | Disconnect (S2-17) | `bard disconnect`, then `bard disconnect` again | First: the token file is gone and the archive is unchanged. Second: "Not connected" | Not run yet |
 
 ## 5. Risks & Mitigations
 * A reference list built from an older archive overstates what Canvas links today, because an archive keeps old links. Mitigation: count a miss only if Canvas still links the item, and check each miss against Canvas directly.
