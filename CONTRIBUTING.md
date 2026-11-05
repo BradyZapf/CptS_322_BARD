@@ -34,6 +34,8 @@ The sprint board (`.github/workflows/project-board.yml`) moves cards for you:
 
 So the PR description must contain `Closes #<issue number>` (or Fixes/Resolves). The "PR links an
 issue" check fails without it; a docs-only PR with no issue can carry the `no-issue` label.
+Both `Closes #47` and the full issue URL (`Closes https://github.com/BradyZapf/CptS_322_BARD/issues/47`) work.
+A stacked PR (its base is another branch, not `main`) does not link or move its issue until it is retargeted to `main`.
 
 One-time setup: the board belongs to a user account, and the built-in `GITHUB_TOKEN` cannot edit
 those, so the repo needs a secret named `PROJECT_TOKEN`. The token can be made by any teammate who can edit the

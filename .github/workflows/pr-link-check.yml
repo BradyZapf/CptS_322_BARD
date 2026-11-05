@@ -33,10 +33,14 @@ jobs:
           esac
           # The pattern (case-insensitive) means:
           #   a closing word: close / closes / closed, fix / fixes / fixed, resolve / resolves / resolved
-          #   then a space or colon, then an issue reference: "#12" or "owner/repo#12"
-          # So these pass: "Closes #12", "fixes: #3", "Resolved BradyZapf/CptS_322_BARD#4".
-          # These fail: "Closes #" (no number), "see #5" (not a closing word).
-          if printf '%s' "$BODY" | grep -Eiq '\b(close[sd]?|fix(e[sd])?|resolve[sd]?)[: ]+(#|[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#)[0-9]+'; then
+          #   then a space or colon, then an issue reference, one of:
+          #     "#12"   or   "owner/repo#12"   or   a full issue URL
+          #     "https://github.com/owner/repo/issues/12"
+          # So these pass: "Closes #12", "fixes: #3", "Resolved BradyZapf/CptS_322_BARD#4",
+          #   "Closes https://github.com/BradyZapf/CptS_322_BARD/issues/47".
+          # These fail: "Closes #" (no number), "see #5" (not a closing word),
+          #   "Closes https://github.com/o/r/pull/5" (that is a PR, not an issue).
+          if printf '%s' "$BODY" | grep -Eiq '\b(close[sd]?|fix(e[sd])?|resolve[sd]?)[: ]+(#|[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#|https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues/)[0-9]+'; then
             echo "Found a closing keyword."
           else
             # "::error::" makes GitHub show this line as a red error annotation.
