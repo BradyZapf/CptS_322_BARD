@@ -14,13 +14,14 @@ from this table, so add a row when you add either.
 | FR-03 | Files linked inside a course | Collect linked files | CanvasConnection, CourseFile | files_linked_inside_a_course | test_s1_02a_canvas_plumbing, test_s1_02b_course_contents | S1-02a, S1-02b |
 | FR-04 | Coverage report | Report coverage | SyncReport | coverage_report | test_s1_00_sync (part) | S1-00 |
 | FR-05 | Deadlines in my own timezone | View upcoming work | Assignment | deadlines_in_my_own_timezone | test_s1_03_upcoming | S1-03 |
-| — | Load courses from archive (helper, no FR) | View upcoming work | User, Course, Assignment | loading_courses_from_archive | test_s1_03a_load_courses | S1-03a |
-| — | Test harness: one fake Canvas (tests only, no FR) | — | CanvasConnection | — | test_s2_d_fakes | S2-16 |
+| -- | Load courses from archive (helper, no FR) | View upcoming work | User, Course, Assignment | loading_courses_from_archive | test_s1_03a_load_courses | S1-03a |
+| -- | Test harness: one fake Canvas (tests only, no FR) | -- | CanvasConnection | -- | test_s2_d_fakes | S2-16 |
 | FR-06 | Searching in plain language | Search coursework | SearchIndex, Passage, CourseItem | searching_in_plain_language | test_s1_04_search | S1-04 |
 | FR-07 | What is due next | View upcoming work | User, Course, Assignment | what_is_due_next | test_s1_03_upcoming | S1-03 |
 | FR-08 | Exporting part of the archive | Export coursework | Exporter, CourseItem | exporting_part_of_the_archive |  |  |
 | FR-09 | My own AI tool reading the archive | Answer AI tool requests | AiConnector, SearchIndex | my_own_ai_tool_reading_the_archive |  |  |
 | FR-10 | Erasing everything | Delete all data | User | erasing_everything | test_s1_05_erase | S1-05 |
+| FR-06, NFR-05 | Local web page: course list and item view | Browse/view archive | WebServer, archive, modules | (none) | test_s2_b_web_page | S2-06 |
 
 | NFR | Checked by |
 |---|---|
@@ -31,4 +32,4 @@ from this table, so add a row when you add either.
 | NFR-05 Local interface token | applies to the web page only (stdio MCP has no port) |
 | NFR-06 Token file owner-only | test_s1_01_connect::test_token_file_is_owner_only |
 | NFR-07 Three systems | CI runs on Ubuntu, Windows and macOS; test_s1_00_sync::test_file_names_are_safe_on_windows |
-
+| NFR-05 (web) | test_s2_b_web_page: secret in every URL, localhost only, CSP header, nosniff header, write methods refused |
