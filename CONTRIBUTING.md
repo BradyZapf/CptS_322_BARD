@@ -23,3 +23,21 @@
 
 ## Issues
 - Use the templates in `.github/ISSUE_TEMPLATE/` for bug reports and feature requests.
+
+## Sprint board automation
+The sprint board (`.github/workflows/project-board.yml`) moves cards for you:
+- A new or reopened issue goes on the board as **To Do**.
+- Assigning an issue moves it to **In Progress**.
+- Opening a PR (or marking a draft ready, or requesting a review) moves the issue it closes to **Code Review**.
+- Closing the issue or merging the PR moves it to **Done** (the board's own built-in workflows).
+- **Testing** is still moved by hand.
+
+So the PR description must contain `Closes #<issue number>` (or Fixes/Resolves). The "PR links an
+issue" check fails without it; a docs-only PR with no issue can carry the `no-issue` label.
+
+One-time setup: the board belongs to a user account, and the built-in `GITHUB_TOKEN` cannot edit
+those, so the repo needs a secret named `PROJECT_TOKEN`. A repo admin (Brady) adds it under
+Settings > Secrets and variables > Actions. It is a personal access token from the board owner:
+classic with `project` + `repo` scopes, or fine-grained with Projects read/write and Issues and
+Pull requests read. Without the secret the workflow prints a notice and passes; the board just
+does not move.

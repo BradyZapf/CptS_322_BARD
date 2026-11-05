@@ -6,7 +6,21 @@ on:
     branches: [main]
 
 jobs:
+  # Fast checks first on one OS; the three-OS test matrix only starts if they pass.
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - run: ruff check .
+      - run: python scripts/check_traceability.py
+
   test:
+    needs: lint
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]   # NFR-07
@@ -16,7 +30,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: pip
       - run: pip install -e ".[dev]"
-      - run: ruff check .
-      - run: python scripts/check_traceability.py
       - run: pytest -q -rs
