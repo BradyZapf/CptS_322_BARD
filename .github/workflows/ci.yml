@@ -1,31 +1,40 @@
+# CI: checks every change before it can merge.
+# Two stages: a quick "lint" job first, then the slower tests on all three operating systems.
 name: CI
 
+# "on" says WHEN this workflow runs.
 on:
-  pull_request:
+  pull_request:          # whenever a pull request is opened or gets new commits
   push:
-    branches: [main]
+    branches: [main]     # and whenever something lands on main
 
 jobs:
-  # Fast checks first on one OS; the three-OS test matrix only starts if they pass.
+  # Stage 1: style check and traceability check, once, on Linux only (fast and cheap).
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v4          # download the repo code onto the runner
+      - uses: actions/setup-python@v5      # install Python
         with:
           python-version: "3.11"
+          # Cache pip's downloads so later runs skip re-downloading packages.
+          # The cache key is built from a file that lists our dependencies; this repo has
+          # no requirements.txt, so we point at pyproject.toml.
           cache: pip
           cache-dependency-path: pyproject.toml
-      - run: pip install -e ".[dev]"
-      - run: ruff check .
-      - run: python scripts/check_traceability.py
+      - run: pip install -e ".[dev]"                  # install BARD plus ruff and pytest
+      - run: ruff check .                              # code style / common mistakes
+      - run: python scripts/check_traceability.py     # every feature and test file is in the matrix
 
+  # Stage 2: the real tests, once per operating system.
   test:
+    # "needs" makes this job wait for lint. If lint fails, the tests never start.
     needs: lint
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]   # NFR-07
-    runs-on: ${{ matrix.os }}
+        # One copy of this job runs for each OS in the list (requirement NFR-07).
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}     # picks the OS for this copy
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -34,4 +43,4 @@ jobs:
           cache: pip
           cache-dependency-path: pyproject.toml
       - run: pip install -e ".[dev]"
-      - run: pytest -q -rs
+      - run: pytest -q -rs     # -q = quiet output, -rs = explain why any test was skipped

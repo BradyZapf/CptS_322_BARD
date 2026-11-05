@@ -36,9 +36,9 @@ So the PR description must contain `Closes #<issue number>` (or Fixes/Resolves).
 issue" check fails without it; a docs-only PR with no issue can carry the `no-issue` label.
 
 One-time setup: the board belongs to a user account, and the built-in `GITHUB_TOKEN` cannot edit
-those, so the repo needs a secret named `PROJECT_TOKEN`. A repo admin (Brady) adds it under
-Settings > Secrets and variables > Actions. Use a fine-grained personal access token from the
-board owner: resource owner BradyZapf, repository access only `CptS_322_BARD` with read-only
+those, so the repo needs a secret named `PROJECT_TOKEN`. The token can be made by any teammate who can edit the
+board (Ryan can); a repo admin (Brady) only pastes it in under Settings > Secrets and variables >
+Actions. Use a fine-grained personal access token: resource owner BradyZapf, repository access only `CptS_322_BARD` with read-only
 Metadata, Issues and Pull requests, and the account permission Projects: read and write.
 Fallback: a classic token with the `project` and `repo` scopes (broader, so prefer fine-grained).
 Without the secret the workflow prints a notice and passes; the board just does not move.
