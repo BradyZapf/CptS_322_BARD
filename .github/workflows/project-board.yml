@@ -30,6 +30,11 @@ env:
 jobs:
   move:
     runs-on: ubuntu-latest
+    # An issue created with an assignee fires opened + assigned together. Run them one after
+    # the other (queue, never cancel) so a late "opened" cannot overwrite In Progress.
+    concurrency:
+      group: board-${{ github.event.issue.number || github.event.pull_request.number }}
+      cancel-in-progress: false
     # A draft PR is not ready for review yet; ready_for_review fires when it is.
     if: github.event_name == 'issues' || github.event.pull_request.draft == false
     steps:
@@ -73,7 +78,8 @@ jobs:
               issueIds = [context.payload.issue.node_id];
               const action = context.payload.action;
               target = action === 'assigned' ? 'In Progress' : 'To Do';
-              onlyFrom = action === 'assigned' ? ['', 'To Do'] : null;
+              // opened: only if no Status yet; assigned: only from empty/To Do; reopened: always.
+              onlyFrom = action === 'assigned' ? ['', 'To Do'] : action === 'opened' ? [''] : null;
             } else {
               const pr = await gh.graphql(`
                 query($owner: String!, $repo: String!, $number: Int!) {

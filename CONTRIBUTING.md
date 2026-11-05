@@ -37,7 +37,8 @@ issue" check fails without it; a docs-only PR with no issue can carry the `no-is
 
 One-time setup: the board belongs to a user account, and the built-in `GITHUB_TOKEN` cannot edit
 those, so the repo needs a secret named `PROJECT_TOKEN`. A repo admin (Brady) adds it under
-Settings > Secrets and variables > Actions. It is a personal access token from the board owner:
-classic with `project` + `repo` scopes, or fine-grained with Projects read/write and Issues and
-Pull requests read. Without the secret the workflow prints a notice and passes; the board just
-does not move.
+Settings > Secrets and variables > Actions. Use a fine-grained personal access token from the
+board owner: resource owner BradyZapf, repository access only `CptS_322_BARD` with read-only
+Metadata, Issues and Pull requests, and the account permission Projects: read and write.
+Fallback: a classic token with the `project` and `repo` scopes (broader, so prefer fine-grained).
+Without the secret the workflow prints a notice and passes; the board just does not move.
