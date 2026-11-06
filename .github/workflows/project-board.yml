@@ -74,7 +74,7 @@ jobs:
             }
             // The default `github` client uses GITHUB_TOKEN, which cannot write the board.
             // So we make a second client that uses our PROJECT_TOKEN.
-            const gh = getOctokit(process.env.PROJECT_TOKEN);
+            const gh = github.getOctokit(process.env.PROJECT_TOKEN);
 
             // STEP 1: ask GitHub (GraphQL "query" = read-only question) for the board.
             //   user(login) -> projectV2(number)    find the board by owner and number
