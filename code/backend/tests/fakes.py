@@ -62,14 +62,14 @@ class FakeConnection:
                  reject_token: bool = False, forbidden_files: set[int] | None = None,
                  locked_files: set[int] | None = None, missing_files: set[int] | None = None,
                  failing_files: set[int] | None = None,
-                 file_bytes: bytes = b"%PDF-1.4 fake"):
+                 file_bytes: bytes | None = None):
         self.courses = courses or {}
         self.reject_token = reject_token
         self.forbidden = forbidden_files or set()
         self.locked = locked_files or set()  # Canvas describes them but gives no download link
         self.missing = missing_files or set()  # Canvas answers 404
         self.failing = failing_files or set()  # Canvas keeps failing after every retry
-        self.file_bytes = file_bytes
+        self.file_bytes = file_bytes if file_bytes is not None else text_pdf("fake file")
         self.fetched: list[int] = []
 
     def verify_token(self) -> bool:
@@ -96,7 +96,7 @@ class FakeConnection:
         return self.file_bytes
 
 
-def pdf(i: int, size: int = 13, status: FileStatus | None = None, reason: str = "",
+def pdf(i: int, size: int | None = None, status: FileStatus | None = None, reason: str = "",
        name: str | None = None) -> CourseFile:
     """A fake file. Leave status empty for a file the sync has not tried yet. Pass a status and
     reason to build one as the sync would leave it, e.g. pdf(2, status=FileStatus.BLOCKED,
@@ -105,7 +105,7 @@ def pdf(i: int, size: int = 13, status: FileStatus | None = None, reason: str = 
     status format, not PDF content, so S2-10/S2-11's real text extraction never runs on this
     fixture's placeholder bytes."""
     return CourseFile(item_id=i, title=f"Slides {i}", course_code="FAKE-101",
-                      file_name=name or f"slides{i}.pdf", linked_from="modules", size=size,
+                      file_name=name or f"slides{i}.pdf", linked_from="modules", size=len(text_pdf("fake file")) if size is None else size,
                       status=status, status_reason=reason)
 
 
@@ -335,10 +335,10 @@ class FakeCourse:
             self.pages.append(page)
         return page
 
-    def file(self, name: str, data: bytes = b"%PDF-1.4 fake", listed: bool = True,
+    def file(self, name: str, data: bytes | None = None, listed: bool = True,
              locked: bool = False) -> FakeFile:
         """A file. listed=False leaves it out of the Files list, so only a module or a link finds it."""
-        f = self.canvas._new_file(name, data, locked)
+        f = self.canvas._new_file(name, data if data is not None else text_pdf("fake file"), locked)
         if listed:
             self.files.append(f)
         return f
