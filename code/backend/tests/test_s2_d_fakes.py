@@ -9,7 +9,13 @@ import requests
 from pypdf import PasswordType, PdfReader
 
 from bard import canvas_connection
-from bard.canvas_connection import LOCKED_REASON, CanvasUnreachable, NotAvailable, TokenRejected
+from bard.canvas_connection import (
+    LOCKED_REASON,
+    QUOTA_WAIT_MAX,
+    CanvasUnreachable,
+    NotAvailable,
+    TokenRejected,
+)
 from bard.models import CourseFile, Module, Page
 from fakes import (
     TOKEN,
@@ -240,7 +246,8 @@ def test_a_429_twice_is_retried_and_then_succeeds(fc):
     fc.fail(429, path=f"/api/v1/files/{f.file_id}", times=2)
 
     assert fc.connection().fetch_file(f.file_id) == b"slides"
-    assert fc.waits == [1.0, 2.0]
+    # Each retry wait (1, 2) is followed by the quota wait: the 429 says no quota is left (S2-05).
+    assert fc.waits == [1.0, QUOTA_WAIT_MAX, 2.0, QUOTA_WAIT_MAX]
 
 
 @pytest.mark.parametrize("status, problem", [(429, "rate limited (429)"), (500, "Canvas server error (500)")])
@@ -252,7 +259,11 @@ def test_a_429_or_500_that_keeps_coming_gives_up_after_every_retry(fc, status, p
         fc.connection().fetch_file(f.file_id)
 
     assert str(broken.value) == f"gave up after 5 tries: {problem}"
-    assert fc.waits == [1.0, 2.0, 4.0, 8.0]
+    retries = [1.0, 2.0, 4.0, 8.0]
+    if status == 429:  # the 429 says no quota is left, so each retry also waits for it (S2-05)
+        assert fc.waits == [w for retry in retries for w in (retry, QUOTA_WAIT_MAX)]
+    else:  # a 500 says nothing about the quota
+        assert fc.waits == retries
 
 
 def test_an_unreachable_canvas_fails_at_once_with_no_token_in_the_message(fc):
@@ -272,8 +283,12 @@ def test_a_fault_on_one_path_leaves_the_others_alone(fc):
     c.page("Welcome")
     fc.fail(500, path="/api/v1/courses/1001/pages")
 
-    with pytest.raises(CanvasUnreachable):
-        items_of(fc, c)
+    conn = fc.connection()
+    items = conn.get_course_items(c.as_course())
+    # S2-03: the pages that kept failing are one error part; the rest of the course still comes back
+    assert conn.part_results["pages"] == "error: gave up after 5 tries: Canvas server error (500)"
+    assert [f.title for f in of_type(items, CourseFile)] == ["week1.pdf"]
+    assert of_type(items, Page) == []
     assert fc.connection().get_courses()[0].code == "FAKE-101"
 
 

@@ -2,6 +2,26 @@
 
 One section per item. Each engineer adds the section for their own item in that item's pull request.
 
+## S2-14 Erase follow-ups
+
+**Files**
+
+- `code/backend/src/bard/user.py`: `delete_all_data()` gets its refusal message from a new `erase_refusal()`, which the CLI also calls. `_unsafe_reason()` refuses a `BARD_HOME` that is a link. `erase_refusal()` is a helper like `load_connection()`, so it is not in the class diagram.
+- `code/backend/src/bard/cli.py`: `erase` moves into its own `erase()` function, which returns the exit code.
+- `code/backend/tests/test_s1_05_erase.py`: the tests.
+- `docs/TraceabilityMatrix.md`: S2-14 added to the FR-10 row.
+
+**How it works**
+
+- `erase` calls `erase_refusal()` before showing the preview. An unsafe folder is refused without asking "Type yes". The message says nothing was removed, not even the saved token, and never says "could not be removed". `delete_all_data()` checks again, so the web page gets the same protection.
+- A refusal keeps the token: a wrong `BARD_HOME` gets fixed and erase is run again, and removing only the token would leave a half-done erase that looks finished.
+- The revoke reminder is shown after a full erase, after a partial one and after a refusal, because removing the file never cancels the token in Canvas. It is not shown for "Nothing to erase" or when the user does not type yes.
+- A `BARD_HOME` that is a link is refused before it is resolved, with a message that names where it points. Erase never follows a link.
+- `erase` exits with 1 after a refusal or an erase that is not complete, and with 0 otherwise.
+- The .md copies (S2-10), the earlier copies (S2-19) and the guide file (S2-15) all live inside the archive folder, so removing that folder removes them. A test puts hand-made copies of each in the archive and checks that they are gone.
+
+This covers all of [#14](https://github.com/BradyZapf/CptS_322_BARD/issues/14), including its "smaller" items (the link message and the exit code).
+
 ## S2-16 A test harness: one fake Canvas for every test
 
 **Files**
@@ -26,3 +46,23 @@ No file under `code/backend/src/` changes.
 - Submissions: the fake answers `/courses/:id/assignments/:id/submissions/self`, but `CanvasConnection` does not ask for submissions until S2-12. Until then, the test for it calls that URL directly.
 - The fake does not split long lists into pages (no `Link` headers).
 - Moving the existing tests onto the harness is PB-06.
+
+## S2-17 Connect with a saved token
+
+**Files**
+
+- `code/backend/src/bard/cli.py`: `connect` checks for a saved token first and takes `--replace`. Adds a new `disconnect` command. `sync` prints one plain message when Canvas rejects the saved token.
+- `code/backend/src/bard/user.py`: `disconnect()` removes the token file and nothing else. It returns False if no token was saved. It is a helper like `load_connection()`, and like that one it is not in the class diagram.
+- `code/backend/src/bard/sync.py`: if Canvas rejects the token partway through (a 401 while reading a course or downloading a file), the sync stops and records `TOKEN_REJECTED`; it no longer crashes with a traceback. Files already saved stay. The sequence diagram's order is unchanged.
+- `code/backend/tests/test_s1_01_connect.py`: the tests, using `FakeCanvas` from S2-16.
+- `docs/Reports/02_Design.md`: two design decisions. `docs/Reports/03_TestPlan.md`: hand tests TC-8 to TC-11.
+
+**How it works**
+
+- `connect` with a saved token prints the saved address, then the two commands. It calls neither `input` nor Canvas.
+- `connect --replace` uses `connect_canvas()`, which saves only after `verify_token()` passes. So a rejected or unreachable new token leaves the old file byte-for-byte unchanged.
+- `sync` looks for `TOKEN_REJECTED` among the report's missed reasons. If it finds it, it prints the "expired or was removed" message and `bard connect --replace`, plus how many items were kept, and exits with 1. No message contains the token.
+
+**Depends on** S2-16 (`FakeCanvas`). This PR is stacked on #53.
+
+**Overlap with S2-13:** a token rejected partway through a sync is also an S2-13 bullet, and this item covers it. Not covered here: plain `connect` still prints "Canvas rejected that token." when Canvas is unreachable. That message is S2-13's to fix.

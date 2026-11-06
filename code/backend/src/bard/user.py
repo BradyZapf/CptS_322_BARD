@@ -70,6 +70,15 @@ class User:
 
         return self.connection
 
+    def disconnect(self) -> bool:
+        """S2-17. Remove the saved token file and nothing else: the archive stays. False if no
+        token was saved. An OSError from removing the file is left for the caller to report."""
+        if not self.config_file.exists():
+            return False
+        self.config_file.unlink()
+        self.connection = None
+        return True
+
     def load_courses(self) -> None:
         """NFR-02 (S1-03a). Reconstruct self.courses from the archive on disk.
 
@@ -161,11 +170,15 @@ class User:
     def delete_all_data(self) -> bool:
         """FR-10. Remove the archive folder and the saved token. Returns False and names what
         could not be removed if anything is left. Refuses, removing nothing, if storage_path
-        is somewhere dangerous (see _unsafe_reason)."""
-        reason = self._unsafe_reason()
-        if reason:
-            print(f"Refusing to erase {self.storage_path}: {reason}. Nothing was removed. "
-                  "Check the BARD_HOME setting.")
+        is somewhere dangerous (see _unsafe_reason).
+
+        A refusal keeps the token too (#14). A refusal means BARD_HOME is set wrong, so the
+        user fixes it and erases again. Removing only the token would leave a half-done erase
+        that looks finished while the archive is still on disk. The CLI reminds the user to
+        revoke the token in Canvas either way."""
+        refusal = self.erase_refusal()
+        if refusal:
+            print(refusal)
             return False
 
         failed: list[str] = []
@@ -185,9 +198,23 @@ class User:
         self.courses = []
         return not failed
 
+    def erase_refusal(self) -> str | None:
+        """S2-14. The message saying why erase will not touch storage_path, or None if it may.
+        The CLI calls this before asking "Type yes", and delete_all_data calls it again so the
+        web page gets the same protection."""
+        reason = self._unsafe_reason()
+        if reason is None:
+            return None
+        return (f"Refusing to erase {self.storage_path}: {reason}. Nothing was removed, "
+                "not even the saved token. Check the BARD_HOME setting.")
+
     def _unsafe_reason(self) -> str | None:
         """Why storage_path must not be erased, or None if it is safe. A wrong BARD_HOME must
-        never delete the home folder or a whole drive. normcase: Windows paths ignore case."""
+        never delete the home folder or a whole drive. normcase: Windows paths ignore case.
+        A link is refused before it is resolved: erase never follows one (#14)."""
+        if self.storage_path.is_symlink():
+            return (f"it is a link to {self.storage_path.readlink()}, and erase does not follow "
+                    "links")
         folder = Path(os.path.normcase(self.storage_path.resolve()))
         home = Path(os.path.normcase(Path.home().resolve()))
         if folder == folder.parent:
