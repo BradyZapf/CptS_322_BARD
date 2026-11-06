@@ -1,6 +1,7 @@
 """The command line. Plays the SyncCourseworkUI <<boundary>> role until the web page exists.
 
-    python -m bard connect          FR-01  (S1-01)
+    python -m bard connect [--replace]   FR-01  (S1-01, S2-17)
+    python -m bard disconnect       FR-01  (S2-17)
     python -m bard sync [--term T]  FR-02  (S1-00 + S1-02a, S1-02b)
     python -m bard due              FR-07  (S1-03)
     python -m bard search "late policy"   FR-06  (S1-04)
@@ -16,8 +17,12 @@ from datetime import datetime, timezone
 
 from .coverage_report import build_coverage, render
 from .search_index import SearchIndex
-from .sync import SyncCoursework
+from .sync import TOKEN_REJECTED, SyncCoursework
 from .user import User
+
+REVOKE_HINT = "Also revoke the token in Canvas: Account > Settings > Approved Integrations."
+SAVED_TOKEN_REJECTED = ("Canvas did not accept your saved token: it expired or was removed in Canvas.\n"
+                        "Put in a new one with: bard connect --replace")
 
 
 def show_progress(line: str) -> None:
@@ -32,17 +37,61 @@ class SyncCourseworkUI:
     def __init__(self, user: User):
         self.user = user
 
-    def start_sync(self, term: str | None) -> None:
+    def start_sync(self, term: str | None) -> int:
+        """Run one sync and show its report. 1 if Canvas rejected the saved token, else 0."""
         conn = self.user.load_connection()
         if conn is None:
             print("Not connected yet. Run: python -m bard connect")
-            return
-        report = SyncCoursework(conn, self.user.storage_path, progress=show_progress).sync(term)
+            return 0
+        report = SyncCoursework(conn, self.user.storage_path).sync(term)
+        if any(reason == TOKEN_REJECTED for _, reason in report.missed):
+            # S2-17: one plain message with the one command that fixes it, not the usual report
+            print(SAVED_TOKEN_REJECTED)
+            if report.entries:
+                print(f"The {len(report.entries)} items saved before that are kept.")
+            return 1
         self.display_report(report.summarize())
-        self.display_report(render(build_coverage(report.courses, report.missed, report.sync_date, report.part_outcomes)))
+        return 0
 
     def display_report(self, summary: str) -> None:
         print(summary)
+
+
+def connect(user: User, replace: bool) -> int:
+    """FR-01, S2-17. With a saved token, say so and ask nothing (no call to Canvas) unless
+    --replace. A new token is saved only after Canvas accepts it, so a failed replace keeps the
+    old one."""
+    saved = user.load_connection()
+    if saved is not None and not replace:
+        print(f"Already connected to {saved.canvas_url}.\n"
+              "To put in a new token: bard connect --replace\n"
+              "To remove the token and keep your archive: bard disconnect")
+        return 0
+    url = input("Canvas address (e.g. https://wsu.instructure.com): ")
+    token = getpass.getpass("Access token: ")
+    if user.connect_canvas(url, token):
+        print("Connected.")
+        return 0
+    print("Canvas rejected that token.")
+    if saved is not None:
+        print("The new token was not saved; your old token is still saved.")
+    return 1
+
+
+def disconnect(user: User) -> int:
+    """S2-17. Remove the saved token and nothing else."""
+    try:
+        removed = user.disconnect()
+    except OSError as e:
+        print(f"Could not remove the saved token at {user.config_file}: {e.strerror or e}. "
+              "Nothing was changed.")
+        return 1
+    if not removed:
+        print("Not connected: there is no saved token to remove.")
+        return 0
+    print(f"Disconnected: the saved token was removed. Your archive at {user.storage_path} was not changed.\n"
+          + REVOKE_HINT)
+    return 0
 
 
 def erase_preview(user: User, max_entries: int = 20) -> str | None:
@@ -68,7 +117,9 @@ def erase_preview(user: User, max_entries: int = 20) -> str | None:
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="bard", description="Your Canvas coursework, on your computer.")
     sub = p.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("connect")
+    c = sub.add_parser("connect")
+    c.add_argument("--replace", action="store_true", help="put in a new token instead of the saved one")
+    sub.add_parser("disconnect", help="remove the saved token and keep the archive")
     s = sub.add_parser("sync")
     s.add_argument("--term")
     sub.add_parser("due")
@@ -80,11 +131,11 @@ def main(argv: list[str] | None = None) -> int:
     user = User()
     try:
         if a.cmd == "connect":
-            url = input("Canvas address (e.g. https://wsu.instructure.com): ")
-            token = getpass.getpass("Access token: ")
-            print("Connected." if user.connect_canvas(url, token) else "Canvas rejected that token.")
+            return connect(user, a.replace)
+        elif a.cmd == "disconnect":
+            return disconnect(user)
         elif a.cmd == "sync":
-            SyncCourseworkUI(user).start_sync(a.term)
+            return SyncCourseworkUI(user).start_sync(a.term)
         elif a.cmd == "due":
             for asg in user.list_upcoming_work(datetime.now(timezone.utc)):
                 due = asg.due_local()
@@ -102,7 +153,7 @@ def main(argv: list[str] | None = None) -> int:
                 print("Nothing to erase.")
             elif input(f"{preview}\nType yes to erase everything: ").strip().lower() == "yes":
                 if user.delete_all_data():
-                    print("Erased. Also revoke the token in Canvas: Account > Settings > Approved Integrations.")
+                    print("Erased. " + REVOKE_HINT)
                 else:
                     print("Some things could not be removed (see above). The erase is NOT complete.")
             else:
