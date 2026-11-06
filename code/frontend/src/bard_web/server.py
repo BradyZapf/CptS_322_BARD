@@ -205,6 +205,7 @@ _ITEM_VIEW_TMPL = """\
 """
 
 _SEARCH_RESULTS_TMPL = """\
+<p class="back"><a href="{{ base }}/">&#8592; All courses</a></p>
 <h1>Search</h1>
 {% if message %}
   <p class="search-message">{{ message }}</p>
@@ -413,6 +414,7 @@ class WebServer:
 
             body = render_template_string(
                 _SEARCH_RESULTS_TMPL,
+                base=base,
                 message=message,
                 results=results,
             )
