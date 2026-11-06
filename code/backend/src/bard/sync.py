@@ -19,6 +19,7 @@ from .canvas_connection import (
     NotAvailable,
     TokenRejected,
 )
+from .guide_file import write_guide_file
 from .models import Course, CourseFile, CourseItem, FileStatus
 from .search_index import SearchIndex
 from .sync_report import SyncReport
@@ -64,6 +65,7 @@ class SyncCoursework:
         except TokenRejected:
             report.record_missed("everything", TOKEN_REJECTED)
             return report
+        write_guide_file(self.archive)  # S2-15: present after any sync that got past the token
 
         # 1.1.3 getCourses(term), 1.1.3.1 createCourse
         try:

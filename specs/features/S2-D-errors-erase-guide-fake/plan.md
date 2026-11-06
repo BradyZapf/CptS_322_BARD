@@ -2,6 +2,39 @@
 
 One section per item. Each engineer adds the section for their own item in that item's pull request.
 
+## S2-15 Guide file for coding agents
+
+**Files**
+
+- `code/backend/src/bard/guide_file.py` (new): `write_guide_file(archive_dir)`, a fixed, generic
+  explanation of the archive's layout. Not a class in the diagram, like `User.disconnect()`
+  (S2-17); it never reads a token or any synced content, so it can never leak either.
+- `code/backend/src/bard/sync.py`: `sync()` calls it once, right after `verify_token()`
+  succeeds. **Deliberately not before**: S1-00's existing invariant is that a rejected token
+  saves nothing at all, and the guide file is no exception, so it is not written until the
+  token has been checked. A sync that then finds zero courses still gets the guide.
+- `code/backend/tests/test_s2_d_guide_file.py` (new): the tests.
+- `docs/TraceabilityMatrix.md`: a row for the new test file (FR-09).
+
+**How it works**
+
+- The five `FileStatus` meanings live in one dict, `_STATUS_MEANINGS`, keyed by the enum
+  itself, not written out by hand in the prose — `write_guide_file()` raises `KeyError` if
+  `FileStatus` ever gains a member this dict does not cover, so an incomplete guide fails the
+  whole sync instead of shipping quietly. A test proves this by adding a fake status and
+  checking it raises.
+- Every topic the requirement lists (layout and naming, the five statuses, `bard search`,
+  `modules/` and its item ids, first-seen times, `(earlier <date>)` copies, the coverage
+  report and "blocked is not the same as no files") is covered in the fixed prose; a test
+  checks each is present.
+- `erase` already removes the whole archive folder (`shutil.rmtree`), so the guide file is
+  removed along with everything else with no extra code — checked by hand, not added as a new
+  test here since `test_s1_05_erase.py` is S2-14's file, not this story's.
+
+**Depends on nothing new.** Does not touch `(earlier <date>)` file-renaming itself (that is
+the re-upload work, not yet in `main`) — the guide explains the convention in prose regardless
+of whether any file in this particular archive has used it yet.
+
 ## S2-16 A test harness: one fake Canvas for every test
 
 **Files**

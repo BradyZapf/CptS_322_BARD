@@ -19,7 +19,7 @@ from this table, so add a row when you add either.
 | FR-06 | Searching in plain language | Search coursework | SearchIndex, Passage, CourseItem | searching_in_plain_language | test_s1_04_search | S1-04 |
 | FR-07 | What is due next | View upcoming work | User, Course, Assignment | what_is_due_next | test_s1_03_upcoming | S1-03 |
 | FR-08 | Exporting part of the archive | Export coursework | Exporter, CourseItem | exporting_part_of_the_archive |  |  |
-| FR-09 | My own AI tool reading the archive | Answer AI tool requests | AiConnector, SearchIndex | my_own_ai_tool_reading_the_archive |  |  |
+| FR-09 | My own AI tool reading the archive | Answer AI tool requests | AiConnector, SearchIndex | my_own_ai_tool_reading_the_archive | test_s2_d_guide_file | S2-15 |
 | FR-10 | Erasing everything | Delete all data | User | erasing_everything | test_s1_05_erase | S1-05 |
 
 | NFR | Checked by |
