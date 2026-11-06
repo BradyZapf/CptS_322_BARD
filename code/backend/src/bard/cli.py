@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 
 import requests
 
+from .coverage_report import build_coverage, render
 from .search_index import SearchIndex
 from .sync import TOKEN_REJECTED, SyncCoursework
 from .user import User
@@ -24,6 +25,12 @@ from .user import User
 REVOKE_HINT = "Also revoke the token in Canvas: Account > Settings > Approved Integrations."
 SAVED_TOKEN_REJECTED = ("Canvas did not accept your saved token: it expired or was removed in Canvas.\n"
                         "Put in a new one with: bard connect --replace")
+
+
+def show_progress(line: str) -> None:
+    """S2-03. Progress goes to stderr, so `bard sync > report.txt` keeps it out of the report
+    (`2> progress.txt` saves only the progress)."""
+    print(line, file=sys.stderr, flush=True)
 
 
 class SyncCourseworkUI:
@@ -38,7 +45,7 @@ class SyncCourseworkUI:
         if conn is None:
             print("Not connected yet. Run: python -m bard connect")
             return 0
-        report = SyncCoursework(conn, self.user.storage_path).sync(term)
+        report = SyncCoursework(conn, self.user.storage_path, progress=show_progress).sync(term)
         if any(reason == TOKEN_REJECTED for _, reason in report.missed):
             # S2-17: one plain message with the one command that fixes it, not the usual report
             print(SAVED_TOKEN_REJECTED)
@@ -46,6 +53,9 @@ class SyncCourseworkUI:
                 print(f"The {len(report.entries)} items saved before that are kept.")
             return 1
         self.display_report(report.summarize())
+        self.display_report(
+            render(build_coverage(report.courses, report.missed, report.sync_date, report.part_outcomes))
+        )
         return 0
 
     def display_report(self, summary: str) -> None:
@@ -116,6 +126,29 @@ def erase_preview(user: User, max_entries: int = 20) -> str | None:
     return "This will permanently delete:\n" + "\n".join(lines)
 
 
+def erase(user: User) -> int:
+    """FR-10, S2-14. An unsafe folder is refused before asking anything. The revoke reminder
+    is shown after every outcome but "nothing to erase" and "not confirmed", because removing
+    the file never cancels the token in Canvas. 1 if refused or not complete, else 0."""
+    refusal = user.erase_refusal()
+    if refusal:
+        print(refusal)
+        print(REVOKE_HINT)
+        return 1
+    preview = erase_preview(user)
+    if preview is None:
+        print("Nothing to erase.")
+        return 0
+    if input(f"{preview}\nType yes to erase everything: ").strip().lower() != "yes":
+        print("Nothing was erased.")
+        return 0
+    if user.delete_all_data():
+        print("Erased. " + REVOKE_HINT)
+        return 0
+    print("Some things could not be removed (see above). The erase is NOT complete.\n" + REVOKE_HINT)
+    return 1
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="bard", description="Your Canvas coursework, on your computer.")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -150,16 +183,7 @@ def main(argv: list[str] | None = None) -> int:
             for h in hits:
                 print(f"[{h.source()}]\n  {h.snippet}\n")
         elif a.cmd == "erase":
-            preview = erase_preview(user)
-            if preview is None:
-                print("Nothing to erase.")
-            elif input(f"{preview}\nType yes to erase everything: ").strip().lower() == "yes":
-                if user.delete_all_data():
-                    print("Erased. " + REVOKE_HINT)
-                else:
-                    print("Some things could not be removed (see above). The erase is NOT complete.")
-            else:
-                print("Nothing was erased.")
+            return erase(user)
     except NotImplementedError as e:
         print(f"{e}")
         return 2

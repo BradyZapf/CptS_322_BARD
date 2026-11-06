@@ -10,6 +10,7 @@ It only calls other classes, so the tests run it with a fake CanvasConnection.
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from pathlib import Path
 
 from .canvas_connection import (
@@ -21,6 +22,7 @@ from .canvas_connection import (
 )
 from .models import Course, CourseFile, CourseItem, FileStatus
 from .search_index import SearchIndex
+from .sync_progress import SyncProgress
 from .sync_report import SyncReport
 
 # The reason a sync records when Canvas stops accepting the token. The CLI looks for it (S2-17).
@@ -49,8 +51,14 @@ def unique_name(name: str, item_id: int) -> str:
     return f"{stem}-{item_id}{dot}{ext}"
 
 
+GIVE_UP_AFTER = 2  # a Canvas that is down fails every course; stop waiting through retries for each
+
+
 class SyncCoursework:
-    def __init__(self, connection: CanvasConnection, archive_dir: str | os.PathLike):
+    def __init__(self, connection: CanvasConnection, archive_dir: str | os.PathLike,
+                 progress: Callable[[str], None] | None = None):
+        """`progress` gets one line of text at a time while the sync runs (S2-03)."""
+        self.progress = SyncProgress(progress)
         self.connection = connection
         self.archive = Path(archive_dir)
         self.index = SearchIndex(self.archive / "index.db")
@@ -71,20 +79,39 @@ class SyncCoursework:
         except (TokenRejected, NotAvailable) as e:
             report.record_missed("course list", getattr(e, "reason", TOKEN_REJECTED))
             return report
-        for course in courses:
+        except CanvasUnreachable as e:  # still failing after every retry
+            report.record_missed("course list", str(e))
+            return report
+        report.courses = courses
+        self.connection.on_part = self.progress.part_started  # "reading pages..." as each part starts
+        in_a_row = 0  # courses in a row that Canvas could not answer after every retry
+        for number, course in enumerate(courses, start=1):
             try:
+                if in_a_row >= GIVE_UP_AFTER:
+                    reason = f"not tried: Canvas was unreachable for {GIVE_UP_AFTER} courses in a row"
+                    report.record_missed(course.code, reason)
+                    self.progress.course_skipped(course, reason)
+                    continue
+                self.progress.course_started(course, number, len(courses))
                 # getCourseItems(course): every page of results (sequence diagram)
                 try:
                     items = self.connection.get_course_items(course)
-                except NotAvailable as e:
-                    report.record_missed(course.code, e.reason)
+                except (NotAvailable, CanvasUnreachable) as e:
+                    reason = e.reason if isinstance(e, NotAvailable) else str(e)
+                    report.record_missed(course.code, reason)
+                    self.progress.course_skipped(course, reason)
+                    in_a_row = in_a_row + 1 if isinstance(e, CanvasUnreachable) else 0
                     continue
+                in_a_row = 0
+                self._note_part_outcomes(course, report)
+                self.progress.items_found(items)
                 for item in items:
                     if isinstance(item, CourseFile):
                         self._save_file(course, item, report)  # 1.1.3.1.1 createCourseFile
                     else:
                         self._save_text(course, item, report)  # an assignment, page or announcement
                     course.items.append(item)
+                self.progress.course_finished()
             except TokenRejected:
                 # The token stopped working partway (expired or revoked in Canvas). Every later
                 # call would fail too, so stop here. What is already saved stays (S2-17).
@@ -93,6 +120,21 @@ class SyncCoursework:
 
         # 1.1.4 summarize() happens in the UI, which calls report.summarize()
         return report
+
+    def _note_part_outcomes(self, course: Course, report: SyncReport) -> None:
+        """What each tab answered, for the coverage report. A connection that does not say (the
+        fake one) leaves the report to derive it from the items. Only what the items cannot show
+        is kept: a switched-off tab, a part that kept failing, and modules that came back empty. A switched-off tab stays
+        blocked even when its files or pages were found another way (S2-03); the report says how
+        many were still saved."""
+        results = getattr(self.connection, "part_results", None) or {}
+        for part, result in results.items():
+            if result.startswith("blocked"):
+                report.part_outcomes[(course.code, part)] = ("blocked", result.removeprefix("blocked: "))
+            elif result.startswith("error"):  # still failing after every retry (S2-03)
+                report.part_outcomes[(course.code, part)] = ("error", result.removeprefix("error: "))
+            elif part == "modules" and result == "empty":
+                report.part_outcomes[(course.code, part)] = ("empty", "")
 
     def _folder(self, course: Course, kind: str) -> Path:
         d = self.archive / safe_name(course.code) / kind
@@ -115,6 +157,7 @@ class SyncCoursework:
             f.local_path = path.relative_to(self.archive).as_posix()
             f.status, f.status_reason = FileStatus.SAVED, "unchanged since the last sync"
             self.index.stamp_first_seen(f)
+            self.progress.file_done(f, unchanged=True)
             return
         # alt [new or changed]: fetchFile(fileId)
         try:
@@ -123,10 +166,12 @@ class SyncCoursework:
             f.status = FileStatus.LOCKED if e.reason == LOCKED_REASON else FileStatus.BLOCKED
             f.status_reason = e.reason
             report.record_missed(f.file_name or f.title, e.reason)
+            self.progress.file_done(f)
             return
         except CanvasUnreachable as e:
             f.status, f.status_reason = FileStatus.FAILED, str(e)
             report.record_missed(f.file_name or f.title, str(e))
+            self.progress.file_done(f)
             return
         path.write_bytes(data)
         if f.updated_at:  # remember Canvas's timestamp, so is_unchanged() can compare next time
@@ -135,4 +180,5 @@ class SyncCoursework:
         f.status, f.status_reason = FileStatus.SAVED, "downloaded"
         self.index.stamp_first_seen(f)
         report.record_saved(f.local_path)
+        self.progress.file_done(f)
         # Planned for a later sprint: call f.extract_text(path) here to write the text beside the original.
