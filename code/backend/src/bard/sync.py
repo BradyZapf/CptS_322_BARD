@@ -79,20 +79,39 @@ class SyncCoursework:
         except (TokenRejected, NotAvailable) as e:
             report.record_missed("course list", getattr(e, "reason", TOKEN_REJECTED))
             return report
-        for course in courses:
+        except CanvasUnreachable as e:  # still failing after every retry
+            report.record_missed("course list", str(e))
+            return report
+        report.courses = courses
+        self.connection.on_part = self.progress.part_started  # "reading pages..." as each part starts
+        in_a_row = 0  # courses in a row that Canvas could not answer after every retry
+        for number, course in enumerate(courses, start=1):
             try:
+                if in_a_row >= GIVE_UP_AFTER:
+                    reason = f"not tried: Canvas was unreachable for {GIVE_UP_AFTER} courses in a row"
+                    report.record_missed(course.code, reason)
+                    self.progress.course_skipped(course, reason)
+                    continue
+                self.progress.course_started(course, number, len(courses))
                 # getCourseItems(course): every page of results (sequence diagram)
                 try:
                     items = self.connection.get_course_items(course)
-                except NotAvailable as e:
-                    report.record_missed(course.code, e.reason)
+                except (NotAvailable, CanvasUnreachable) as e:
+                    reason = e.reason if isinstance(e, NotAvailable) else str(e)
+                    report.record_missed(course.code, reason)
+                    self.progress.course_skipped(course, reason)
+                    in_a_row = in_a_row + 1 if isinstance(e, CanvasUnreachable) else 0
                     continue
+                in_a_row = 0
+                self._note_part_outcomes(course, report)
+                self.progress.items_found(items)
                 for item in items:
                     if isinstance(item, CourseFile):
                         self._save_file(course, item, report)  # 1.1.3.1.1 createCourseFile
                     else:
                         self._save_text(course, item, report)  # an assignment, page or announcement
                     course.items.append(item)
+                self.progress.course_finished()
             except TokenRejected:
                 # The token stopped working partway (expired or revoked in Canvas). Every later
                 # call would fail too, so stop here. What is already saved stays (S2-17).

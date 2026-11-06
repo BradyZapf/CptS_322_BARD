@@ -43,7 +43,7 @@ class SyncCourseworkUI:
         if conn is None:
             print("Not connected yet. Run: python -m bard connect")
             return 0
-        report = SyncCoursework(conn, self.user.storage_path).sync(term)
+        report = SyncCoursework(conn, self.user.storage_path, progress=show_progress).sync(term)
         if any(reason == TOKEN_REJECTED for _, reason in report.missed):
             # S2-17: one plain message with the one command that fixes it, not the usual report
             print(SAVED_TOKEN_REJECTED)
@@ -51,6 +51,9 @@ class SyncCourseworkUI:
                 print(f"The {len(report.entries)} items saved before that are kept.")
             return 1
         self.display_report(report.summarize())
+        self.display_report(
+            render(build_coverage(report.courses, report.missed, report.sync_date, report.part_outcomes))
+        )
         return 0
 
     def display_report(self, summary: str) -> None:
