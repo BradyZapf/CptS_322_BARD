@@ -281,7 +281,7 @@ def test_only_get_requests_are_made():
 def test_a_blocked_module_file_is_saved_as_blocked_and_the_rest_of_the_module_syncs(archive):
     # End to end through the sync: a Files tab course whose module file is 403 on download.
     module = Module(item_id=10, title="Week 1", course_code="FAKE-101")
-    ok, blocked = pdf(1), pdf(2)
+    ok, blocked = pdf(1, name="file1.bin"), pdf(2)  # blocked never downloads, so stays a .pdf
 
     report = SyncCoursework(FakeConnection({"c1": [module, ok, blocked]}, forbidden_files={2}),
                             archive).sync()

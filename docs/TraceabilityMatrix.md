@@ -11,12 +11,12 @@ from this table, so add a row when you add either.
 |---|---|---|---|---|---|---|
 | FR-01 | Connecting a Canvas account | Connect Canvas account, Verify token | User, CanvasConnection | connecting_a_canvas_account | test_s1_01_connect | S1-01, S2-17 |
 | FR-02 | Complete download of a course | Sync coursework | SyncCoursework, CanvasConnection, Course, CourseItem | complete_download_of_a_course | test_s1_00_sync, test_s1_02b_course_contents, test_s2_01_shared_format, test_s2_02_modules_files_fallback, test_s2_03_retries_progress | S1-00, S1-02a, S1-02b, S2-01, S2-02 |
-| FR-03 | Files linked inside a course | Collect linked files | CanvasConnection, CourseFile | files_linked_inside_a_course | test_s1_02a_canvas_plumbing, test_s1_02b_course_contents, test_s2_c_file_work | S1-02a, S1-02b, S2-10 |
-| FR-04 | Coverage report | Report coverage | SyncReport, coverage_report | coverage_report | test_s1_00_sync (part), test_s2_04_coverage_report | S1-00, S2-03, S2-04 |
+| FR-03 | Files linked inside a course | Collect linked files | CanvasConnection, CourseFile | files_linked_inside_a_course | test_s1_02a_canvas_plumbing, test_s1_02b_course_contents, test_s2_c_file_work | S1-02a, S1-02b, S2-10, S2-11 |
+| FR-04 | Coverage report | Report coverage | SyncReport, coverage_report | coverage_report | test_s1_00_sync (part), test_s2_04_coverage_report, test_s2_c_file_work (part) | S1-00, S2-03, S2-04, S2-11 |
 | FR-05 | Deadlines in my own timezone | View upcoming work | Assignment | deadlines_in_my_own_timezone | test_s1_03_upcoming | S1-03 |
 | -- | Load courses from archive (helper, no FR) | View upcoming work | User, Course, Assignment | loading_courses_from_archive | test_s1_03a_load_courses | S1-03a |
 | -- | Test harness: one fake Canvas (tests only, no FR) | -- | CanvasConnection | -- | test_s2_d_fakes | S2-16 |
-| FR-06 | Searching in plain language | Search coursework | SearchIndex, Passage, CourseItem | searching_in_plain_language | test_s1_04_search, test_s2_c_file_work | S1-04, S2-10 |
+| FR-06 | Searching in plain language | Search coursework | SearchIndex, Passage, CourseItem | searching_in_plain_language | test_s1_04_search, test_s2_c_file_work | S1-04, S2-10, S2-11 |
 | FR-07 | What is due next | View upcoming work | User, Course, Assignment | what_is_due_next | test_s1_03_upcoming | S1-03 |
 | FR-08 | Exporting part of the archive | Export coursework | Exporter, CourseItem | exporting_part_of_the_archive |  |  |
 | FR-09 | My own AI tool reading the archive | Answer AI tool requests | AiConnector, SearchIndex | my_own_ai_tool_reading_the_archive |  |  |

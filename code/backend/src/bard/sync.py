@@ -157,6 +157,11 @@ class SyncCoursework:
             f.local_path = path.relative_to(self.archive).as_posix()
             f.status, f.status_reason = FileStatus.SAVED, "unchanged since the last sync"
             self.index.stamp_first_seen(f)
+            # S2-11: re-check a saved PDF/Word original without downloading it again, so a file
+            # that was unreadable keeps reporting its reason; its .md, if any, is not rewritten.
+            f.check_still_readable(path)
+            if f.status == FileStatus.UNREADABLE:
+                report.record_missed(f.file_name or f.title, f.status_reason)
             self.progress.file_done(f, unchanged=True)
             return
         # alt [new or changed]: fetchFile(fileId)
@@ -182,8 +187,11 @@ class SyncCoursework:
         report.record_saved(f.local_path)
         self.progress.file_done(f)
         # S2-10: a PDF or Word file gets a .md copy, its text goes on the item, and into the
-        # search index. Anything else, or a file with no text, is left alone (extract_text()
-        # returns False and nothing here runs).
+        # search index. Anything else is left alone (extract_text() returns False and nothing
+        # here runs). S2-11: a PDF or Word file whose text could not be read is saved (the
+        # original stays) but marked unreadable, with its reason, in the report.
         if f.extract_text(path):
             f.text_path = f.local_path + ".md"
             self.index.add_item(f)
+        elif f.status == FileStatus.UNREADABLE:
+            report.record_missed(f.file_name or f.title, f.status_reason)

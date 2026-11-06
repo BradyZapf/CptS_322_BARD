@@ -19,8 +19,15 @@ or `specs/`.
 
 ## S2-11 Mark scanned and locked PDFs as unreadable
 
-(Fill in here when built — extends `CourseFile.extract_text()` and `_save_file`'s handling of
-its result; same `tests/test_s2_c_file_work.py`.)
+- `src/bard/models.py`: `CourseFile.extract_text()` now sets `status`/`status_reason` to
+  `FileStatus.UNREADABLE` (with a plain-words reason) when a PDF or Word file's text cannot be
+  read, instead of just returning `False`. A new `check_still_readable()` re-checks a saved,
+  unchanged original without writing anything, for the second-sync case. Both share a new
+  private `_read_text()` (and `_pdf_text()`/`_word_text()`, which now return `(text, reason)`
+  instead of a bare string).
+- `src/bard/sync.py`: `_save_file` calls `check_still_readable()` on the unchanged-file branch
+  and reports `UNREADABLE` files (on either branch) with `report.record_missed(...)`.
+- `tests/test_s2_c_file_work.py`: the S2-11 tests, same shared file as S2-10.
 
 ## S2-12 Download the user's own submission files
 

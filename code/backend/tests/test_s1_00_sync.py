@@ -48,7 +48,7 @@ def test_a_dropped_download_is_reported_and_the_rest_are_saved(archive):
 
 def test_unchanged_file_is_not_downloaded_twice(archive):
     # NFR-03
-    conn = FakeConnection({"c1": [pdf(1, size=13)]})
+    conn = FakeConnection({"c1": [pdf(1)]})
     SyncCoursework(conn, archive).sync()
     SyncCoursework(conn, archive).sync()
     assert conn.fetched == [1]

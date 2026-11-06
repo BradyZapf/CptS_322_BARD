@@ -17,11 +17,17 @@ from enum import StrEnum
 from pathlib import Path
 
 import docx
-from pypdf import PdfReader
+from pypdf import PasswordType, PdfReader
 
 # S2-10: only these two kinds get a .md text copy. Anything else is left alone.
 _PDF_SUFFIX = ".pdf"
 _WORD_SUFFIX = ".docx"
+
+# S2-11: why a PDF or Word file's text could not be read.
+PASSWORD_LOCKED_REASON = "locked with a password BARD does not have"  # not canvas_connection.LOCKED_REASON
+SCANNED_REASON = "no text found, probably a scan"
+NO_TEXT_REASON = "no text found"
+DAMAGED_FILE_REASON = "damaged file: could not be read"
 
 
 @dataclass
@@ -184,37 +190,61 @@ class CourseFile(CourseItem):
 
         The .md is named after the whole original name (e.g. "report.pdf.md"), so a PDF and a
         Word file that share a stem never collide (S2-10). Only PDF and Word files are handled;
-        anything else, or a file with no text (a scan, a locked PDF, a damaged file: S2-11),
-        is left alone and this returns False.
+        anything else is left alone and this returns False, with status untouched.
+
+        A PDF or Word file whose text cannot be read (a scan, a locked PDF, a damaged file:
+        S2-11) also returns False, but sets status to UNREADABLE with a plain-words reason, and
+        writes no .md.
         """
-        suffix = path.suffix.lower()
-        if suffix == _PDF_SUFFIX:
-            text = _pdf_text(path)
-        elif suffix == _WORD_SUFFIX:
-            text = _word_text(path)
-        else:
-            return False
-        if not text.strip():
+        text, reason = self._read_text(path)
+        if text is None:
+            if reason:  # a PDF or Word file that could not be read, not just "not applicable"
+                self.status, self.status_reason = FileStatus.UNREADABLE, reason
             return False
         self.text = text
         path.with_name(path.name + ".md").write_text(text, encoding="utf-8")
         return True
 
+    def check_still_readable(self, path: Path) -> None:
+        """S2-11. On a sync where `path` is unchanged (so it is not re-downloaded and its .md,
+        if any, is not rewritten), re-check the saved original so a file that was unreadable is
+        still reported as unreadable, with its reason, instead of silently going quiet. Only
+        PDF and Word files are checked; anything else (an image, ...) is left exactly as the
+        caller already set it."""
+        _, reason = self._read_text(path)
+        if reason:
+            self.status, self.status_reason = FileStatus.UNREADABLE, reason
 
-def _pdf_text(path: Path) -> str:
+    def _read_text(self, path: Path) -> tuple[str | None, str]:
+        """The text at `path`, read but not written. (None, "") if this is not a PDF or Word
+        file. (None, reason) if it is one but its text could not be read. (text, "") on success.
+        """
+        suffix = path.suffix.lower()
+        if suffix == _PDF_SUFFIX:
+            return _pdf_text(path)
+        if suffix == _WORD_SUFFIX:
+            return _word_text(path)
+        return None, ""
+
+
+def _pdf_text(path: Path) -> tuple[str | None, str]:
     try:
         reader = PdfReader(path)
-        return "\n".join(page.extract_text() or "" for page in reader.pages)
+        if reader.is_encrypted and reader.decrypt("") == PasswordType.NOT_DECRYPTED:
+            return None, PASSWORD_LOCKED_REASON  # a real password BARD was not given
+        text = "\n".join(page.extract_text() or "" for page in reader.pages)
     except Exception:
-        return ""  # a scan, a locked PDF or a damaged file: S2-11 gives this a reason
+        return None, DAMAGED_FILE_REASON
+    return (text, "") if text.strip() else (None, SCANNED_REASON)
 
 
-def _word_text(path: Path) -> str:
+def _word_text(path: Path) -> tuple[str | None, str]:
     try:
         document = docx.Document(path)
-        return "\n".join(p.text for p in document.paragraphs)
+        text = "\n".join(p.text for p in document.paragraphs)
     except Exception:
-        return ""  # a damaged file: S2-11 gives this a reason
+        return None, DAMAGED_FILE_REASON
+    return (text, "") if text.strip() else (None, NO_TEXT_REASON)
 
 
 @dataclass

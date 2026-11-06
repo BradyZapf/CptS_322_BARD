@@ -294,13 +294,13 @@ def test_a_fault_on_one_path_leaves_the_others_alone(fc):
 
 def test_a_file_that_fails_during_a_sync_is_reported_and_the_rest_is_saved(fc, archive):
     c = fc.course(1)
-    good = c.file("good.pdf", b"good")
-    bad = c.file("bad.pdf")
+    good = c.file("good.bin", b"good")  # not a pdf/docx: this test is about reporting, not text
+    bad = c.file("bad.pdf")  # never downloads, so its extension does not matter here
     fc.fail(403, path=f"/api/v1/files/{bad.file_id}")
 
     report = fc.sync(archive)
 
-    assert (archive / "FAKE-101" / "files" / f"good-{good.file_id}.pdf").read_bytes() == b"good"
+    assert (archive / "FAKE-101" / "files" / f"good-{good.file_id}.bin").read_bytes() == b"good"
     assert report.missed == [("bad.pdf", "forbidden by the instructor (403)")]
 
 

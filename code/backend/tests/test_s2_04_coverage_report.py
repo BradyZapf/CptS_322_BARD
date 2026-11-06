@@ -8,7 +8,7 @@ from bard.coverage_report import BLOCKED_IS_NORMAL, Outcome, build_coverage, ren
 from bard.models import Course, CourseFile, FileStatus, Page
 from bard.sync import SyncCoursework
 from bard.user import User
-from fakes import FakeConnection, assignment, course, pdf, seen
+from fakes import FakeConnection, assignment, course, pdf, seen, text_pdf
 
 
 def sync_and_report(archive, courses, **fake_options):
@@ -346,14 +346,14 @@ def test_a_blocked_files_tab_stays_blocked_when_files_are_found_through_modules(
                    canvas_json_module_item(2, file_id=6, title="Notes")]})
     for f in (5, 6):
         responses.get(f"{URL}/api/v1/files/{f}", json=canvas_json_file(f))
-        responses.get(f"{URL}/files/{f}/download", body=b"%PDF-1.4 fake")
+        responses.get(f"{URL}/files/{f}/download", body=text_pdf("fake file"))
     report = SyncCoursework(OneCourse([c]), archive).sync()
     text = render(build_coverage(report.courses, report.missed, report.sync_date, report.part_outcomes))
     assert table_row(text, "FAKE-101")[1] == "blocked"
     assert ("  FAKE-101: the files tab is blocked; 2 files still saved another way "
             "(modules, links or the syllabus)."
             in section(text, "Coverage"))
-    assert len(list((archive / "FAKE-101" / "files").iterdir())) == 2
+    assert len(list((archive / "FAKE-101" / "files").glob("*.pdf"))) == 2  # the two originals (each also gets a .md)
     assert section(text, "Problems") == ["  None."]  # blocked is normal, never a problem
 
 
@@ -373,7 +373,7 @@ def test_a_files_tab_that_answers_reads_ok_with_no_note(archive, no_waiting):
     c = course(1)
     serve(c, {10: [canvas_json_module_item(1, file_id=5, title="Slides")]}, files_tab="ok")
     responses.get(f"{URL}/api/v1/files/5", json=canvas_json_file(5))
-    responses.get(f"{URL}/files/5/download", body=b"%PDF-1.4 fake")
+    responses.get(f"{URL}/files/5/download", body=text_pdf("fake file"))
     report = SyncCoursework(OneCourse([c]), archive).sync()
     text = render(build_coverage(report.courses, report.missed, report.sync_date, report.part_outcomes))
     assert table_row(text, "FAKE-101")[1] == "ok"
