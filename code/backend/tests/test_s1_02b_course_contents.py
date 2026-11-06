@@ -305,6 +305,13 @@ def test_a_sync_saves_what_get_course_items_found(tmp_path, monkeypatch):
                  modules={10: [canvas_json_module_item(100, file_id=7)]})
     serve_file_details(canvas_json_file(7, "week1.bin"))  # not a pdf/docx: this test is about
     responses.get(f"{URL}/files/7/download", body=b"%PDF-1.4 fake")  # saving, not text extraction
+    # S2-12: every assignment's own submission is asked for too (get_assignment, then its
+    # submission); this one has nothing handed in.
+    assignment = canvas_json_assignments(1)[0]
+    responses.get(f"{URL}/api/v1/courses/{c.course_id}/assignments/{assignment['id']}", json=assignment)
+    responses.get(f"{URL}/api/v1/courses/{c.course_id}/assignments/{assignment['id']}/submissions/self",
+                  json={"id": 9001, "assignment_id": assignment["id"], "user_id": 42,
+                        "workflow_state": "unsubmitted", "submitted_at": None, "attachments": []})
 
     report = SyncCoursework(CanvasConnection(URL, TOKEN), tmp_path).sync()
 

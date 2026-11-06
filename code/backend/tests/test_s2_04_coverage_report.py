@@ -412,6 +412,11 @@ def report_text(report):
 def test_a_part_that_keeps_failing_is_an_error_cell_and_the_other_parts_are_saved(archive, no_waiting):
     c = course(1)
     serve(c, {}, files_tab="ok", assignments=canvas_json_assignments(2))
+    for a in canvas_json_assignments(2):  # S2-12: each assignment's own submission is asked for too
+        responses.get(f"{URL}/api/v1/courses/{c.course_id}/assignments/{a['id']}", json=a)
+        responses.get(f"{URL}/api/v1/courses/{c.course_id}/assignments/{a['id']}/submissions/self",
+                      json={"id": 9000 + a["id"], "assignment_id": a["id"], "user_id": 42,
+                            "workflow_state": "unsubmitted", "submitted_at": None, "attachments": []})
     responses.replace(responses.GET, f"{URL}/api/v1/courses/{c.course_id}/pages", status=503, json=DOWN)
     report = SyncCoursework(OneCourse([c]), archive).sync()
     text = report_text(report)

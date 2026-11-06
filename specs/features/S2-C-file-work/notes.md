@@ -40,7 +40,28 @@ plumbing) — no assertion was weakened, only file names changed, plus one addit
 parameter added to `tests/fakes.py`'s `pdf()` helper (defaults to the old behaviour for every
 other caller). Full suite confirmed green afterward.
 
-## S2-12 — not started
+## S2-12 Download the user's own submission files — done
 
-Not in this pass; `test_s2_c_file_work.py` is the shared test file per `validation.md`; add
-its tests to it, not a new file.
+Built: `CanvasConnection.get_own_submission(course, assignment_id)` (always asks for "self",
+never another student), wired into `sync.py` as `_save_submission`, called for every
+`Assignment`. Reuses `_save_file` (given two new optional parameters, `folder`/`name`, both
+defaulting to the pre-S2-12 behaviour) so submission attachments get the full existing
+treatment — unchanged-skip, text extraction, unreadable marking, search indexing — for free,
+saved under a new `submissions/` folder per course, named `"<assignment title>-<file name>"`.
+All acceptance criteria covered; see `test_s2_c_file_work.py`.
+
+**Two small cross-file touches, both additive, to keep everything else working:**
+- `tests/fakes.py`: `FakeConnection` (the older, simpler fake used by stories before S2-16)
+  gained a `get_own_submission()` that always returns `None` — it predates submissions and
+  every assignment built through it has none handed in. Every existing caller is unaffected.
+- `tests/fakes.py`: `FakeCanvas`'s `_course_route` gained a route for plain
+  `GET .../assignments/:id` (previously only the list and `/submissions/self` existed), since
+  canvasapi's `Assignment.get_submission()` hangs off an `Assignment` object that must be
+  fetched first — real Canvas requires this same two-call chain.
+- `tests/test_s1_02b_course_contents.py`: one test now also mocks the assignment-detail and
+  submission-self endpoints for its one assignment (nothing handed in), since a full sync now
+  asks for every assignment's submission. No assertion changed.
+
+All of S2-C (S2-10, S2-11, S2-12) is now built and tested, except the one deferred S2-10 bullet
+above. S2-15 (a different story, in `specs/features/S2-D-errors-erase-guide-fake/`) is next,
+on its own branch off `main` — independent of this stack.
