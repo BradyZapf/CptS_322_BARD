@@ -13,8 +13,9 @@ from fakes import FIRST_SEEN, TOKEN, URL, FakeConnection, assignment, pdf, seen
 
 
 def sync_files(archive, **fake_options):
-    """Sync three fake files (ids 1, 2, 3) and return them by id."""
-    files = [pdf(1), pdf(2), pdf(3)]
+    """Sync three fake files (ids 1, 2, 3) and return them by id. Not PDFs or Word files: this
+    story is the shared status/first-seen format, not text extraction (that's S2-10/S2-11)."""
+    files = [pdf(1, name="file1.bin"), pdf(2, name="file2.bin"), pdf(3, name="file3.bin")]
     SyncCoursework(FakeConnection({"c1": files}, **fake_options), archive).sync()
     return {f.item_id: f for f in files}
 
@@ -59,9 +60,9 @@ def test_a_saved_file_has_status_saved_and_a_reason(archive):
 
 
 def test_an_unchanged_file_is_still_saved_and_keeps_first_seen(archive):
-    conn = FakeConnection({"c1": [pdf(1)]})
+    conn = FakeConnection({"c1": [pdf(1, name="file1.bin")]})
     SyncCoursework(conn, archive).sync()
-    again = pdf(1)
+    again = pdf(1, name="file1.bin")
     SyncCoursework(FakeConnection({"c1": [again]}), archive).sync()
     assert again.status == FileStatus.SAVED
     assert "unchanged" in again.status_reason

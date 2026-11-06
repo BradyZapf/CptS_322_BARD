@@ -1,18 +1,20 @@
 """S2-10: a PDF or Word file's text goes into a .md copy beside the original, and into the
 search index, so a phrase inside the file can be found by search (FR-03, FR-04, FR-06).
+S2-11: a PDF or Word file whose text cannot be read (a scan, a locked PDF, a damaged file) is
+marked unreadable with a reason instead, and the original is kept with no .md.
 Spec: specs/features/S2-C-file-work/
 
-S2-11 (scanned and locked PDFs marked unreadable) and S2-12 (the user's own submission files)
-are the rest of S2-C and are not built yet; their tests belong in this same file later.
+S2-12 (the user's own submission files) is the rest of S2-C and is not built yet; its tests
+belong in this same file later.
 """
 
 from pathlib import Path
 
 import pytest
 
-from bard.models import CourseFile
+from bard.models import CourseFile, FileStatus
 from bard.search_index import SearchIndex
-from fakes import FakeCanvas, scanned_pdf, text_pdf, word_file
+from fakes import FakeCanvas, locked_pdf, scanned_pdf, text_pdf, word_file
 
 
 @pytest.fixture
@@ -77,8 +79,6 @@ def test_extract_text_leaves_a_file_that_is_not_pdf_or_word_alone(tmp_path):
 
 
 def test_extract_text_returns_false_and_writes_no_md_when_a_pdf_has_no_text(tmp_path):
-    """A scan has no text layer (S2-11 gives this a reason; here only the no-crash contract
-    of extract_text() itself is checked)."""
     path = tmp_path / "scan.pdf"
     path.write_bytes(scanned_pdf())
     f = CourseFile(item_id=1, title="scan.pdf", course_code="FAKE-101")
@@ -87,6 +87,109 @@ def test_extract_text_returns_false_and_writes_no_md_when_a_pdf_has_no_text(tmp_
 
     assert f.text == ""
     assert not md_beside(path).exists()
+
+
+# ---------------------------------------------------------------- S2-11: unreadable files
+
+
+def test_a_scanned_pdf_is_marked_unreadable_with_a_reason(tmp_path):
+    path = tmp_path / "scan.pdf"
+    path.write_bytes(scanned_pdf())
+    f = CourseFile(item_id=1, title="scan.pdf", course_code="FAKE-101")
+
+    assert f.extract_text(path) is False
+
+    assert f.status == FileStatus.UNREADABLE
+    assert f.status_reason == "no text found, probably a scan"
+    assert path.exists()  # the original is kept
+    assert not md_beside(path).exists()
+
+
+def test_a_password_locked_pdf_is_marked_unreadable_and_the_reason_says_locked(tmp_path):
+    path = tmp_path / "exam.pdf"
+    path.write_bytes(locked_pdf("Answer key", password="secret"))
+    f = CourseFile(item_id=1, title="exam.pdf", course_code="FAKE-101")
+
+    assert f.extract_text(path) is False
+
+    assert f.status == FileStatus.UNREADABLE
+    assert "locked" in f.status_reason
+    assert path.exists()
+    assert not md_beside(path).exists()
+
+
+def test_a_pdf_encrypted_with_an_empty_password_is_read_normally(tmp_path):
+    path = tmp_path / "open.pdf"
+    path.write_bytes(locked_pdf("Syllabus text", password=""))
+    f = CourseFile(item_id=1, title="open.pdf", course_code="FAKE-101")
+
+    assert f.extract_text(path) is True
+
+    assert f.status is None  # extract_text() only sets status on failure; success leaves it alone
+    assert "Syllabus text" in f.text
+    assert md_beside(path).exists()
+
+
+def test_a_damaged_pdf_is_marked_unreadable_and_does_not_raise(tmp_path):
+    path = tmp_path / "broken.pdf"
+    path.write_bytes(b"%PDF-1.4 truncated and not a real pdf at all")
+    f = CourseFile(item_id=1, title="broken.pdf", course_code="FAKE-101")
+
+    assert f.extract_text(path) is False  # must not raise: a damaged file cannot stop the sync
+
+    assert f.status == FileStatus.UNREADABLE
+    assert f.status_reason == "damaged file: could not be read"
+
+
+def test_a_damaged_word_file_is_marked_unreadable_and_does_not_raise(tmp_path):
+    path = tmp_path / "broken.docx"
+    path.write_bytes(b"not a zip, not a real word file")
+    f = CourseFile(item_id=1, title="broken.docx", course_code="FAKE-101")
+
+    assert f.extract_text(path) is False
+
+    assert f.status == FileStatus.UNREADABLE
+    assert f.status_reason == "damaged file: could not be read"
+
+
+def test_a_scanned_pdf_in_a_sync_keeps_its_original_and_is_listed_in_the_report(fc, archive):
+    c = fc.course(1)
+    c.file("scan.pdf", scanned_pdf())
+
+    report = fc.sync(archive)
+
+    (original,) = (archive / "FAKE-101" / "files").glob("scan*.pdf")
+    assert original.exists()  # the original is kept
+    assert not md_beside(original).exists()  # and gets no .md
+    assert ("scan.pdf", "no text found, probably a scan") in report.missed
+
+
+def test_a_damaged_pdf_in_a_sync_does_not_stop_the_rest_of_the_sync(fc, archive):
+    c = fc.course(1)
+    c.file("broken.pdf", b"not a pdf at all, just garbage bytes")
+    c.file("notes.pdf", text_pdf("Readable notes"))
+
+    report = fc.sync(archive)
+
+    assert ("broken.pdf", "damaged file: could not be read") in report.missed
+    (good,) = (archive / "FAKE-101" / "files").glob("notes*.pdf")
+    assert md_beside(good).exists()  # the rest of the sync still ran
+
+
+def test_a_second_sync_of_an_unreadable_pdf_still_reports_it_without_downloading_again(fc, archive):
+    c = fc.course(1)
+    c.file("scan.pdf", scanned_pdf())
+    c.file("photo.png", b"not a pdf or word file, just bytes")  # only pdf/word are re-checked
+
+    fc.sync(archive)
+    downloads_after_first = sum(1 for _, p in fc.requests if p.endswith("/download"))
+
+    report2 = fc.sync(archive)
+    downloads_after_second = sum(1 for _, p in fc.requests if p.endswith("/download"))
+
+    assert downloads_after_second == downloads_after_first  # not downloaded again
+    assert ("scan.pdf", "no text found, probably a scan") in report2.missed
+    assert not any("photo" in what for what, _ in report2.missed)  # an image is never unreadable
 
 
 # ---------------------------------------------------------------- wired into a sync

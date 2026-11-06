@@ -303,8 +303,8 @@ def test_a_sync_saves_what_get_course_items_found(tmp_path, monkeypatch):
     c = course(1)
     serve_course(c, assignments=canvas_json_assignments(1), switched_off=("files",),
                  modules={10: [canvas_json_module_item(100, file_id=7)]})
-    serve_file_details(canvas_json_file(7, "week1.pdf"))
-    responses.get(f"{URL}/files/7/download", body=b"%PDF-1.4 fake")
+    serve_file_details(canvas_json_file(7, "week1.bin"))  # not a pdf/docx: this test is about
+    responses.get(f"{URL}/files/7/download", body=b"%PDF-1.4 fake")  # saving, not text extraction
 
     report = SyncCoursework(CanvasConnection(URL, TOKEN), tmp_path).sync()
 

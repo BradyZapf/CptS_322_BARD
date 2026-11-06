@@ -96,12 +96,16 @@ class FakeConnection:
         return self.file_bytes
 
 
-def pdf(i: int, size: int = 13, status: FileStatus | None = None, reason: str = "") -> CourseFile:
+def pdf(i: int, size: int = 13, status: FileStatus | None = None, reason: str = "",
+       name: str | None = None) -> CourseFile:
     """A fake file. Leave status empty for a file the sync has not tried yet. Pass a status and
     reason to build one as the sync would leave it, e.g. pdf(2, status=FileStatus.BLOCKED,
-    reason="forbidden by the instructor (403)")."""
+    reason="forbidden by the instructor (403)"). `name` overrides the generated file name: pass
+    one with a non-pdf/docx extension (e.g. "file1.bin") for a test that is about the shared
+    status format, not PDF content, so S2-10/S2-11's real text extraction never runs on this
+    fixture's placeholder bytes."""
     return CourseFile(item_id=i, title=f"Slides {i}", course_code="FAKE-101",
-                      file_name=f"slides{i}.pdf", linked_from="modules", size=size,
+                      file_name=name or f"slides{i}.pdf", linked_from="modules", size=size,
                       status=status, status_reason=reason)
 
 
