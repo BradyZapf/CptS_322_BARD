@@ -11,7 +11,7 @@ from this table, so add a row when you add either.
 |---|---|---|---|---|---|---|
 | FR-01 | Connecting a Canvas account | Connect Canvas account, Verify token | User, CanvasConnection | connecting_a_canvas_account | test_s1_01_connect | S1-01, S2-17 |
 | FR-02 | Complete download of a course | Sync coursework | SyncCoursework, CanvasConnection, Course, CourseItem | complete_download_of_a_course | test_s1_00_sync, test_s1_02b_course_contents, test_s2_01_shared_format, test_s2_02_modules_files_fallback | S1-00, S1-02a, S1-02b, S2-01, S2-02 |
-| FR-03 | Files linked inside a course | Collect linked files | CanvasConnection, CourseFile | files_linked_inside_a_course | test_s1_02a_canvas_plumbing, test_s1_02b_course_contents, test_s2_c_file_work | S1-02a, S1-02b, S2-10, S2-11 |
+| FR-03 | Files linked inside a course | Collect linked files | CanvasConnection, CourseFile | files_linked_inside_a_course | test_s1_02a_canvas_plumbing, test_s1_02b_course_contents, test_s2_c_file_work | S1-02a, S1-02b, S2-10, S2-11, S2-12 |
 | FR-04 | Coverage report | Report coverage | SyncReport | coverage_report | test_s1_00_sync (part), test_s2_c_file_work (part) | S1-00, S2-11 |
 | FR-05 | Deadlines in my own timezone | View upcoming work | Assignment | deadlines_in_my_own_timezone | test_s1_03_upcoming | S1-03 |
 | — | Load courses from archive (helper, no FR) | View upcoming work | User, Course, Assignment | loading_courses_from_archive | test_s1_03a_load_courses | S1-03a |

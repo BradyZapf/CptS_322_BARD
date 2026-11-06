@@ -19,7 +19,7 @@ from .canvas_connection import (
     NotAvailable,
     TokenRejected,
 )
-from .models import Course, CourseFile, CourseItem, FileStatus
+from .models import Assignment, Course, CourseFile, CourseItem, FileStatus
 from .search_index import SearchIndex
 from .sync_report import SyncReport
 
@@ -84,6 +84,8 @@ class SyncCoursework:
                         self._save_file(course, item, report)  # 1.1.3.1.1 createCourseFile
                     else:
                         self._save_text(course, item, report)  # an assignment, page or announcement
+                        if isinstance(item, Assignment):
+                            self._save_submission(course, item, report)  # S2-12
                     course.items.append(item)
             except TokenRejected:
                 # The token stopped working partway (expired or revoked in Canvas). Every later
@@ -108,8 +110,13 @@ class SyncCoursework:
         self.index.stamp_first_seen(item)
         self.index.add_item(item)  # FR-06: the CLI searches <archive>/index.db
 
-    def _save_file(self, course: Course, f: CourseFile, report: SyncReport) -> None:
-        path = self._folder(course, "files") / unique_name(safe_name(f.file_name or f.title), f.item_id)
+    def _save_file(self, course: Course, f: CourseFile, report: SyncReport,
+                   folder: str = "files", name: str | None = None) -> None:
+        """`folder` and `name` let a caller save a file somewhere other than the course's plain
+        "files" folder, under a different name (S2-12: the user's own submission files, saved
+        under "submissions", named so it is clear which assignment they belong to)."""
+        path = self._folder(course, folder) / unique_name(safe_name(name or f.file_name or f.title),
+                                                           f.item_id)
         # alt [unchanged since last sync]: skip (NFR-03)
         if f.is_unchanged(path):
             f.local_path = path.relative_to(self.archive).as_posix()
@@ -149,3 +156,23 @@ class SyncCoursework:
             self.index.add_item(f)
         elif f.status == FileStatus.UNREADABLE:
             report.record_missed(f.file_name or f.title, f.status_reason)
+
+    def _save_submission(self, course: Course, assignment: Assignment, report: SyncReport) -> None:
+        """S2-12. The user's own files handed in for `assignment` (never another student's:
+        CanvasConnection.get_own_submission() only ever asks for "self"), saved under the
+        course's "submissions" folder, named so it is clear which assignment they belong to.
+        An assignment with nothing handed in saves nothing and is not an error."""
+        try:
+            submission = self.connection.get_own_submission(course, assignment.item_id)
+        except NotAvailable as e:
+            report.record_missed(f"{assignment.title} (submission)", e.reason)
+            return
+        except CanvasUnreachable as e:
+            report.record_missed(f"{assignment.title} (submission)", str(e))
+            return
+        if submission is None:
+            return  # nothing handed in: not an error
+        assignment.submission = submission
+        for attachment in submission.attachments:
+            self._save_file(course, attachment, report, folder="submissions",
+                            name=f"{assignment.title}-{attachment.file_name or attachment.title}")

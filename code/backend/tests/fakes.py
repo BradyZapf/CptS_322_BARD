@@ -95,6 +95,11 @@ class FakeConnection:
             raise CanvasUnreachable("cannot reach Canvas: Connection reset by peer")
         return self.file_bytes
 
+    def get_own_submission(self, course: Course, assignment_id: int):
+        """S2-12. FakeConnection predates submissions; every assignment here has none handed
+        in. A test that needs an actual submission uses FakeCanvas instead (S2-16)."""
+        return None
+
 
 def pdf(i: int, size: int = 13, status: FileStatus | None = None, reason: str = "",
        name: str | None = None) -> CourseFile:
@@ -548,4 +553,9 @@ class FakeCanvas:
         if m := re.fullmatch(r"/assignments/(\d+)/submissions/self", rest):
             a = next((a for a in c.assignments if a.assignment_id == int(m.group(1))), None)
             return a.submission_json() if a else None
+        if m := re.fullmatch(r"/assignments/(\d+)", rest):
+            # S2-12: CanvasConnection.get_own_submission() fetches the assignment itself first
+            # (canvasapi's get_submission() hangs off an Assignment object), then its submission.
+            a = next((a for a in c.assignments if a.assignment_id == int(m.group(1))), None)
+            return a.json() if a else None
         return None
