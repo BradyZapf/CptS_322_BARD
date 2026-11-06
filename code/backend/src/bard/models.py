@@ -10,6 +10,7 @@ UML -> Python naming: the diagram's camelCase becomes snake_case here
 
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -18,6 +19,10 @@ from pathlib import Path
 
 import docx
 from pypdf import PasswordType, PdfReader
+
+# pypdf warns about fonts and slightly broken PDFs on almost every file; a sync of a real course
+# printed hundreds of lines. Real errors (ERROR and above) still show.
+logging.getLogger("pypdf").setLevel(logging.ERROR)
 
 # S2-10: only these two kinds get a .md text copy. Anything else is left alone.
 _PDF_SUFFIX = ".pdf"

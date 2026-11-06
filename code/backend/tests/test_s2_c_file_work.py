@@ -6,6 +6,7 @@ S2-12: the user's own submission files are saved too, under the course's "submis
 Spec: specs/features/S2-C-file-work/
 """
 
+import logging
 from pathlib import Path
 
 import pytest
@@ -263,6 +264,14 @@ def test_a_second_sync_does_not_rewrite_the_md_of_a_file_that_has_not_changed(fc
     assert "SENTINEL: must survive a second sync" in md.read_text(encoding="utf-8")
 
 
+def test_pypdf_font_warnings_stay_out_of_the_terminal(caplog):
+    # A real course printed hundreds of "fontTools is required" lines during a sync.
+    # Warnings from pypdf are dropped; a real pypdf error is still logged.
+    caplog.set_level(logging.WARNING)
+    logging.getLogger("pypdf._cmap").warning("fontTools is required to fully parse the encoding")
+    assert caplog.records == []
+    logging.getLogger("pypdf").error("a real problem")
+    assert [r.getMessage() for r in caplog.records] == ["a real problem"]
 # ---------------------------------------------------------------- S2-12: own submission files
 
 
