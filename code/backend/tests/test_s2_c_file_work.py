@@ -2,10 +2,8 @@
 search index, so a phrase inside the file can be found by search (FR-03, FR-04, FR-06).
 S2-11: a PDF or Word file whose text cannot be read (a scan, a locked PDF, a damaged file) is
 marked unreadable with a reason instead, and the original is kept with no .md.
+S2-12: the user's own submission files are saved too, under the course's "submissions" folder.
 Spec: specs/features/S2-C-file-work/
-
-S2-12 (the user's own submission files) is the rest of S2-C and is not built yet; its tests
-belong in this same file later.
 """
 
 from pathlib import Path
@@ -263,3 +261,80 @@ def test_a_second_sync_does_not_rewrite_the_md_of_a_file_that_has_not_changed(fc
     fc.sync(archive)
 
     assert "SENTINEL: must survive a second sync" in md.read_text(encoding="utf-8")
+
+
+# ---------------------------------------------------------------- S2-12: own submission files
+
+
+def test_get_own_submission_returns_none_when_nothing_was_handed_in(fc):
+    c = fc.course(1)
+    a = c.assignment("Essay 1")
+
+    submission = fc.connection().get_own_submission(c.as_course(), a.assignment_id)
+
+    assert submission is None
+
+
+def test_get_own_submission_lists_its_attachments(fc):
+    c = fc.course(1)
+    a = c.assignment("Essay 1")
+    a.submit("essay.docx", word_file("My essay"))
+
+    submission = fc.connection().get_own_submission(c.as_course(), a.assignment_id)
+
+    assert submission is not None
+    assert submission.submitted_at is not None
+    (attachment,) = submission.attachments
+    assert attachment.file_name == "essay.docx"
+    assert attachment.course_code == "FAKE-101"
+
+
+def test_only_the_users_own_submission_is_ever_requested(fc):
+    c = fc.course(1)
+    a = c.assignment("Essay 1")
+    a.submit("essay.docx", word_file("My essay"))
+
+    fc.connection().get_own_submission(c.as_course(), a.assignment_id)
+
+    submission_requests = [p for _, p in fc.requests if "/submissions/" in p]
+    assert submission_requests  # the request did happen
+    assert all(p.endswith("/submissions/self") for p in submission_requests)
+
+
+def test_a_submission_file_is_saved_named_for_its_assignment_and_is_searchable(fc, archive):
+    c = fc.course(1)
+    a = c.assignment("Essay 1")
+    a.submit("essay.docx", word_file("A phrase only this submission has"))
+
+    fc.sync(archive)
+
+    submissions_dir = archive / "FAKE-101" / "submissions"
+    (saved,) = submissions_dir.glob("*.docx")
+    assert "Essay 1" in saved.name  # clear which assignment it belongs to
+    assert md_beside(saved).exists()
+    assert "A phrase only this submission has" in md_beside(saved).read_text(encoding="utf-8")
+    passages = SearchIndex(archive / "index.db").search("only this submission has")
+    assert any("submissions" in p.item.local_path for p in passages)
+
+
+def test_an_assignment_with_no_submission_saves_nothing_and_is_not_an_error(fc, archive):
+    c = fc.course(1)
+    c.assignment("Essay 2")  # never submitted
+
+    report = fc.sync(archive)
+
+    assert not (archive / "FAKE-101" / "submissions").exists()
+    assert report.missed == []
+
+
+def test_a_submission_file_that_cannot_be_downloaded_gets_a_status_and_a_reason(fc, archive):
+    c = fc.course(1)
+    a = c.assignment("Essay 1")
+    attachment = a.submit("essay.docx", word_file("text"))
+    fc.fail(403, path=f"/api/v1/files/{attachment.file_id}")
+
+    report = fc.sync(archive)
+
+    assert any("essay.docx" in what and "403" in reason for what, reason in report.missed)
+    submissions_dir = archive / "FAKE-101" / "submissions"
+    assert not submissions_dir.exists() or list(submissions_dir.glob("*.docx")) == []
