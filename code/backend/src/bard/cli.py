@@ -14,6 +14,7 @@ import getpass
 import sys
 from datetime import datetime, timezone
 
+from .coverage_report import build_coverage, render
 from .search_index import SearchIndex
 from .sync import SyncCoursework
 from .user import User
@@ -38,6 +39,7 @@ class SyncCourseworkUI:
             return
         report = SyncCoursework(conn, self.user.storage_path, progress=show_progress).sync(term)
         self.display_report(report.summarize())
+        self.display_report(render(build_coverage(report.courses, report.missed, report.sync_date, report.part_outcomes)))
 
     def display_report(self, summary: str) -> None:
         print(summary)

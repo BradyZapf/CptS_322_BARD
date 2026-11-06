@@ -8,12 +8,18 @@ from __future__ import annotations
 from collections import Counter
 from datetime import datetime, timezone
 
+from .models import Course
+
 
 class SyncReport:
     def __init__(self):
         self.sync_date = datetime.now(timezone.utc)
         self.entries: list[str] = []  # one line per thing saved
         self.missed: list[tuple[str, str]] = []  # (what, reason)
+        self.courses: list[Course] = []  # the courses this sync read, for the coverage report
+        # What a tab really answered, {(course code, part): ("blocked" | "empty", reason)}; only
+        # what the items cannot show. Filled by the sync, read by the coverage report.
+        self.part_outcomes: dict[tuple[str, str], tuple[str, str]] = {}
 
     def record_saved(self, what: str) -> None:
         self.entries.append(what)
