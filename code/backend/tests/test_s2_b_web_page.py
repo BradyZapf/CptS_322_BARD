@@ -442,3 +442,98 @@ def test_file_view_nonexistent_file_returns_404(tmp_path):
     server, client = _make_server(tmp_path)
     resp = _get(client, server, "file/CSCI-101/files/missing-999.pdf")
     assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# S2-07 – search box on the web page
+# ---------------------------------------------------------------------------
+
+def _seed_index(storage, course_code: str, item_id: int, title: str,
+                body_text: str, local_path: str) -> None:
+    """Write a .md file and index it so the search route can find it."""
+    from pathlib import Path
+
+    from bard.models import Page
+    from bard.search_index import SearchIndex
+
+    full = Path(storage) / local_path
+    full.parent.mkdir(parents=True, exist_ok=True)
+    full.write_text(f"# {title}\n\n{body_text}\n", encoding="utf-8")
+
+    item = Page(item_id=item_id, title=title, course_code=course_code,
+                local_path=local_path, body=body_text)
+    idx = SearchIndex(Path(storage) / "index.db")
+    idx.add_item(item)
+
+
+def test_search_box_appears_on_course_list_page(tmp_path):
+    server, client = _make_server(tmp_path)
+    resp = _get(client, server, "")
+    body = resp.data.decode()
+    assert "<form" in body
+    assert 'name="q"' in body
+
+
+def test_search_returns_result_for_matching_word(tmp_path):
+    server, client = _make_server(tmp_path)
+    _seed_index(server.storage_path, "CSCI-101", 1, "Syllabus",
+                "Late work policy: ten percent per day.", "CSCI-101/pages/Syllabus-1.md")
+    resp = _get(client, server, "search?q=syllabus")
+    assert resp.status_code == 200
+    body = resp.data.decode()
+    assert "Syllabus" in body
+    assert "CSCI-101" in body
+    assert "/item/" in body
+
+
+def test_search_result_links_to_item_page(tmp_path):
+    server, client = _make_server(tmp_path)
+    _seed_index(server.storage_path, "CSCI-101", 1, "Syllabus",
+                "Late work policy: ten percent per day.", "CSCI-101/pages/Syllabus-1.md")
+    resp = _get(client, server, "search?q=syllabus")
+    assert b"CSCI-101/pages/Syllabus-1.md" in resp.data
+
+
+def test_search_result_shows_course_and_title(tmp_path):
+    server, client = _make_server(tmp_path)
+    _seed_index(server.storage_path, "MATH-201", 7, "Homework 1",
+                "Solve all problems on page 42.", "MATH-201/assignments/Homework 1-7.md")
+    resp = _get(client, server, "search?q=problems")
+    body = resp.data.decode()
+    assert "Homework 1" in body
+    assert "MATH-201" in body
+
+
+def test_search_no_match_shows_message(tmp_path):
+    server, client = _make_server(tmp_path)
+    resp = _get(client, server, "search?q=xyzzy")
+    assert resp.status_code == 200
+    assert b"Nothing in your archive matches" in resp.data
+
+
+def test_empty_search_shows_message(tmp_path):
+    server, client = _make_server(tmp_path)
+    resp = _get(client, server, "search?q=")
+    assert resp.status_code == 200
+    assert b"Enter a search term" in resp.data
+
+
+def test_search_lone_quote_does_not_crash(tmp_path):
+    server, client = _make_server(tmp_path)
+    resp = _get(client, server, 'search?q="')
+    assert resp.status_code == 200
+
+
+def test_search_AND_alone_does_not_crash(tmp_path):
+    server, client = _make_server(tmp_path)
+    resp = _get(client, server, "search?q=AND")
+    assert resp.status_code == 200
+
+
+def test_search_box_prefills_query_on_results_page(tmp_path):
+    server, client = _make_server(tmp_path)
+    _seed_index(server.storage_path, "CSCI-101", 1, "Syllabus",
+                "Late work policy.", "CSCI-101/pages/Syllabus-1.md")
+    resp = _get(client, server, "search?q=late")
+    body = resp.data.decode()
+    assert 'value="late"' in body

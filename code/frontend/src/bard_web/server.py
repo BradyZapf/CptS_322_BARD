@@ -25,6 +25,7 @@ from pathlib import Path
 
 from flask import Flask, Response, abort, redirect, render_template_string, send_file
 
+from bard.search_index import SearchIndex
 from bard_web.archive import course_folders, read_course
 
 # MIME types that are safe to open inline in the browser.
@@ -111,12 +112,24 @@ _CSS = (
     "    .external { color: #555; }\n"
     "    .external::after { content: ' \u2197'; font-size: .8em; color: #999; }\n"
     "    .unorganised { margin-top: 2rem; }\n"
+    "    .search-form { margin: 1rem 0 1.5rem; }\n"
+    "    .search-results ol { padding-left: 1.5rem; }\n"
+    "    .search-results .source { font-size: .85rem; color: #555; }\n"
+    "    .search-message { color: #555; font-style: italic; }\n"
 )
 
 
-def _page(title: str, body: str) -> str:
-    """Wrap body HTML in a minimal HTML5 shell."""
+def _page(title: str, body: str, base: str = "", search_query: str = "") -> str:
+    """Wrap body HTML in a minimal HTML5 shell with an optional search form."""
     safe_title = html.escape(title)
+    safe_query = html.escape(search_query)
+    search_form = (
+        f'<form class="search-form" action="{base}/search" method="get">\n'
+        f'  <input type="search" name="q" value="{safe_query}"'
+        '   placeholder="Search your archive..." aria-label="Search">\n'
+        '  <button type="submit">Search</button>\n'
+        '</form>\n'
+    ) if base else ""
     return (
         "<!doctype html>\n"
         '<html lang="en">\n'
@@ -129,6 +142,7 @@ def _page(title: str, body: str) -> str:
         "  </style>\n"
         "</head>\n"
         "<body>\n"
+        f"{search_form}"
         f"{body}\n"
         "</body>\n"
         "</html>\n"
@@ -188,6 +202,24 @@ _ITEM_VIEW_TMPL = """\
 <div class="content">
 {{ content|safe }}
 </div>
+"""
+
+_SEARCH_RESULTS_TMPL = """\
+<h1>Search</h1>
+{% if message %}
+  <p class="search-message">{{ message }}</p>
+{% endif %}
+{% if results %}
+  <ol class="search-results">
+  {% for r in results %}
+    <li>
+      <a href="{{ r.href }}">{{ r.title }}</a>
+      <span class="source"> &mdash; {{ r.source }}</span>
+      {% if r.snippet %}<br><small>{{ r.snippet }}</small>{% endif %}
+    </li>
+  {% endfor %}
+  </ol>
+{% endif %}
 """
 
 
@@ -261,7 +293,7 @@ class WebServer:
         def course_list() -> str:
             courses = course_folders(storage)
             body = render_template_string(_COURSE_LIST_TMPL, courses=courses, base=base)
-            return _page("BARD - Your Courses", body)
+            return _page("BARD - Your Courses", body, base=base)
 
         @app.route(f"{base}/course/<course_code>")
         def course_view(course_code: str) -> str:
@@ -321,7 +353,7 @@ class WebServer:
                 unorganised=unorganised,
                 base=base,
             )
-            return _page(course_code, body)
+            return _page(course_code, body, base=base)
 
         @app.route(f"{base}/item/<path:local_path>")
         def item_view(local_path: str) -> str:
@@ -351,7 +383,40 @@ class WebServer:
                 content=safe_content,
                 back=back,
             )
-            return _page(title, body)
+            return _page(title, body, base=base)
+
+        @app.route(f"{base}/search")
+        def search() -> str:
+            from flask import request as flask_request
+            q = flask_request.args.get("q", "").strip()
+            message = ""
+            results: list[dict] = []
+
+            if not q:
+                message = "Enter a search term."
+            else:
+                try:
+                    passages = SearchIndex(storage / "index.db").search(q)
+                except Exception:
+                    passages = []
+
+                if not passages:
+                    message = "Nothing in your archive matches that."
+                else:
+                    for p in passages:
+                        results.append({
+                            "title": html.escape(p.item.title),
+                            "source": html.escape(p.source()),
+                            "snippet": html.escape(p.snippet),
+                            "href": f"{base}/item/{p.item.local_path}",
+                        })
+
+            body = render_template_string(
+                _SEARCH_RESULTS_TMPL,
+                message=message,
+                results=results,
+            )
+            return _page("Search", body, base=base, search_query=q)
 
         @app.route(f"{base}/file/<path:local_path>")
         def file_view(local_path: str) -> Response:
