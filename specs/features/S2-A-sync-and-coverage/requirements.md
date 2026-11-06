@@ -1,12 +1,12 @@
 # S2-A Sync and coverage: requirements
 
-**Covers:** FR-02, FR-04
+**Covers:** FR-02, FR-03, FR-04
 
 **User story.** As a student, I want BARD to download everything I can see in Canvas and to tell me what is new and what is missing, so that I can trust my archive is the whole course, and when it is not, I know where to look in Canvas myself.
 
 **Gherkin:** `features/complete_download_of_a_course.feature`, `features/files_linked_inside_a_course.feature`, `features/coverage_report.feature`
 
-Items: S2-01 to S2-05, see `docs/ProjectManagement/SprintBacklog.md`.
+Items: S2-01 to S2-05 and S2-19, see `docs/ProjectManagement/SprintBacklog.md`.
 
 ## S2-01 Shared format
 
@@ -75,3 +75,31 @@ Blocked and locked are the instructor's choice, so the report counts them as nor
 - When Canvas sends `X-Rate-Limit-Remaining` and the number is below a limit named in the code, the sync waits before its next request
 - A 429 is still retried as it is today
 - The waiting goes through the existing `_sleep` helper, so the tests do not wait for real
+
+## S2-19 Keep both versions when an instructor replaces a file
+
+Canvas keeps the same file id when an instructor re-uploads a file, so without this the new
+download overwrites the old copy and what the old version said is lost. S2-10 (text copies) and
+S2-15 (the guide file) build on the earlier copies.
+
+### Acceptance criteria
+
+- When a file the archive already has comes back from Canvas with different bytes, the old copy is
+  kept beside the new one as `<name> (earlier <date>).<ext>`, and the new one takes the usual name
+- The date is when the old copy was last changed on Canvas; two re-uploads on the same date get
+  ` 2`, ` 3` after the date
+- The first download of a file keeps nothing earlier, and the same bytes sent again make no copy
+- A sync with no changes leaves every file and every earlier copy as it was
+- Search finds the current file and every earlier copy, and marks each earlier one "(earlier version)"
+- The sync never deletes an earlier copy
+- If writing the new bytes fails, the old copy is left untouched, no half-written file is left
+  behind, and the file is recorded as failed with its reason; a failed download changes nothing
+
+### Known limits
+
+- Earlier copies are added to search when they are made. If `index.db` is rebuilt, they drop out
+  of search until S2-10 indexes every file on disk.
+- If BARD is killed in the middle of a write, a `<name>.part` file can stay behind. The next
+  download of that file replaces it.
+- A re-upload under a different file name is a new file, so the old one stays under its old name
+  without "earlier" in it.

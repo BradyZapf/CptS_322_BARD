@@ -114,8 +114,12 @@ def test_a_file_that_changes_between_two_syncs_is_downloaded_again(fc, archive):
     fc.sync(archive)
 
     assert len(downloads(fc)) == 2
-    (saved,) = (archive / "FAKE-101" / "files").glob("notes*.pdf")
-    assert "Version two" in pdf_text(saved.read_bytes())
+    files = archive / "FAKE-101" / "files"
+    assert "Version two" in pdf_text((files / f"notes-{notes.file_id}.pdf").read_bytes())
+    # S2-19: the old version is kept beside it, not overwritten
+    (earlier,) = files.glob(f"notes-{notes.file_id} (earlier *).pdf")
+    assert "Version one" in pdf_text(earlier.read_bytes())
+    assert len(list(files.glob("notes*.pdf"))) == 2
 
 
 # ---------------------------------------------------------------- files built in code

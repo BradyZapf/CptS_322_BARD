@@ -39,5 +39,12 @@ they start with `docs/`.
 - `tests/test_s2_04_coverage_report.py`: the tests
 - `docs/TraceabilityMatrix.md`
 
+## S2-19 Keep both versions when an instructor replaces a file
+
+- `src/bard/versions.py`: new, writes the new bytes safely and renames the old copy
+- `src/bard/sync.py`: `_save_file` saves through it and adds the earlier copy to search
+- `tests/test_s2_reupload_versions.py`: the tests
+- `docs/TraceabilityMatrix.md`, `docs/ProjectManagement/SprintBacklog.md` (PB-03 becomes S2-19)
+
 Do not change other files except to wire your code in. If a later item needs another change to
 `models.py`, open a separate pull request for it first.
