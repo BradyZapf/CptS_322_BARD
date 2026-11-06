@@ -16,6 +16,13 @@ from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
 
+import docx
+from pypdf import PdfReader
+
+# S2-10: only these two kinds get a .md text copy. Anything else is left alone.
+_PDF_SUFFIX = ".pdf"
+_WORD_SUFFIX = ".docx"
+
 
 @dataclass
 class Course:
@@ -174,8 +181,40 @@ class CourseFile(CourseItem):
 
     def extract_text(self, path: Path) -> bool:
         """Write the readable text to a .md beside the original (pypdf, python-docx).
-        Planned for a later sprint."""
-        raise NotImplementedError("not built yet: planned for a later sprint")
+
+        The .md is named after the whole original name (e.g. "report.pdf.md"), so a PDF and a
+        Word file that share a stem never collide (S2-10). Only PDF and Word files are handled;
+        anything else, or a file with no text (a scan, a locked PDF, a damaged file: S2-11),
+        is left alone and this returns False.
+        """
+        suffix = path.suffix.lower()
+        if suffix == _PDF_SUFFIX:
+            text = _pdf_text(path)
+        elif suffix == _WORD_SUFFIX:
+            text = _word_text(path)
+        else:
+            return False
+        if not text.strip():
+            return False
+        self.text = text
+        path.with_name(path.name + ".md").write_text(text, encoding="utf-8")
+        return True
+
+
+def _pdf_text(path: Path) -> str:
+    try:
+        reader = PdfReader(path)
+        return "\n".join(page.extract_text() or "" for page in reader.pages)
+    except Exception:
+        return ""  # a scan, a locked PDF or a damaged file: S2-11 gives this a reason
+
+
+def _word_text(path: Path) -> str:
+    try:
+        document = docx.Document(path)
+        return "\n".join(p.text for p in document.paragraphs)
+    except Exception:
+        return ""  # a damaged file: S2-11 gives this a reason
 
 
 @dataclass

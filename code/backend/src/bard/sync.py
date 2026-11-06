@@ -135,4 +135,9 @@ class SyncCoursework:
         f.status, f.status_reason = FileStatus.SAVED, "downloaded"
         self.index.stamp_first_seen(f)
         report.record_saved(f.local_path)
-        # Planned for a later sprint: call f.extract_text(path) here to write the text beside the original.
+        # S2-10: a PDF or Word file gets a .md copy, its text goes on the item, and into the
+        # search index. Anything else, or a file with no text, is left alone (extract_text()
+        # returns False and nothing here runs).
+        if f.extract_text(path):
+            f.text_path = f.local_path + ".md"
+            self.index.add_item(f)
