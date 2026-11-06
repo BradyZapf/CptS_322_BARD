@@ -15,6 +15,7 @@ import getpass
 import sys
 from datetime import datetime, timezone
 
+from .coverage_report import build_coverage, render
 from .search_index import SearchIndex
 from .sync import TOKEN_REJECTED, SyncCoursework
 from .user import User
@@ -22,6 +23,12 @@ from .user import User
 REVOKE_HINT = "Also revoke the token in Canvas: Account > Settings > Approved Integrations."
 SAVED_TOKEN_REJECTED = ("Canvas did not accept your saved token: it expired or was removed in Canvas.\n"
                         "Put in a new one with: bard connect --replace")
+
+
+def show_progress(line: str) -> None:
+    """S2-03. Progress goes to stderr, so `bard sync > report.txt` keeps it out of the report
+    (`2> progress.txt` saves only the progress)."""
+    print(line, file=sys.stderr, flush=True)
 
 
 class SyncCourseworkUI:
