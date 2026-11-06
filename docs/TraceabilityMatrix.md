@@ -22,6 +22,7 @@ from this table, so add a row when you add either.
 | FR-09 | My own AI tool reading the archive | Answer AI tool requests | AiConnector, SearchIndex | my_own_ai_tool_reading_the_archive |  |  |
 | FR-10 | Erasing everything | Delete all data | User | erasing_everything | test_s1_05_erase | S1-05 |
 | FR-06, NFR-05 | Local web page: course list and item view | Browse/view archive | WebServer, archive, modules | (none) | test_s2_b_web_page | S2-06 |
+| NFR-05 | Basic web security tests for the page | Browse/view archive | WebServer | (none) | test_s2_09_web_security | S2-09 |
 
 | NFR | Checked by |
 |---|---|
