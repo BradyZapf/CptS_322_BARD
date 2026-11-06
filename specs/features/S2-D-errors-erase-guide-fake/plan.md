@@ -65,4 +65,6 @@ No file under `code/backend/src/` changes.
 
 **Depends on** S2-16 (`FakeCanvas`). This PR is stacked on #53.
 
-**Overlap with S2-13:** a token rejected partway through a sync is also an S2-13 bullet, and this item covers it. Not covered here: plain `connect` still prints "Canvas rejected that token." when Canvas is unreachable. That message is S2-13's to fix.
+**Overlap with S2-13:** a token rejected partway through a sync is also an S2-13 bullet, and this item covers it. An unreachable Canvas in `connect` now prints only "Could not reach Canvas at <address>", never "Canvas rejected that token." ([#60](https://github.com/BradyZapf/CptS_322_BARD/issues/60)). The 403 and 500 messages are still S2-13's.
+
+**Saving the token (#60):** `connect_canvas()` writes the new config to a 0600 temp file in the same folder, fsyncs it, then `os.replace`s it over the old one. A crash or full disk partway through leaves the old token as it was and no temp file behind.
