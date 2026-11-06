@@ -2,6 +2,26 @@
 
 One section per item. Each engineer adds the section for their own item in that item's pull request.
 
+## S2-14 Erase follow-ups
+
+**Files**
+
+- `code/backend/src/bard/user.py`: `delete_all_data()` gets its refusal message from a new `erase_refusal()`, which the CLI also calls. `_unsafe_reason()` refuses a `BARD_HOME` that is a link. `erase_refusal()` is a helper like `load_connection()`, so it is not in the class diagram.
+- `code/backend/src/bard/cli.py`: `erase` moves into its own `erase()` function, which returns the exit code.
+- `code/backend/tests/test_s1_05_erase.py`: the tests.
+- `docs/TraceabilityMatrix.md`: S2-14 added to the FR-10 row.
+
+**How it works**
+
+- `erase` calls `erase_refusal()` before showing the preview. An unsafe folder is refused without asking "Type yes". The message says nothing was removed, not even the saved token, and never says "could not be removed". `delete_all_data()` checks again, so the web page gets the same protection.
+- A refusal keeps the token: a wrong `BARD_HOME` gets fixed and erase is run again, and removing only the token would leave a half-done erase that looks finished.
+- The revoke reminder is shown after a full erase, after a partial one and after a refusal, because removing the file never cancels the token in Canvas. It is not shown for "Nothing to erase" or when the user does not type yes.
+- A `BARD_HOME` that is a link is refused before it is resolved, with a message that names where it points. Erase never follows a link.
+- `erase` exits with 1 after a refusal or an erase that is not complete, and with 0 otherwise.
+- The .md copies (S2-10), the earlier copies (S2-19) and the guide file (S2-15) all live inside the archive folder, so removing that folder removes them. A test puts hand-made copies of each in the archive and checks that they are gone.
+
+This covers all of [#14](https://github.com/BradyZapf/CptS_322_BARD/issues/14), including its "smaller" items (the link message and the exit code).
+
 ## S2-16 A test harness: one fake Canvas for every test
 
 **Files**
@@ -45,4 +65,6 @@ No file under `code/backend/src/` changes.
 
 **Depends on** S2-16 (`FakeCanvas`). This PR is stacked on #53.
 
-**Overlap with S2-13:** a token rejected partway through a sync is also an S2-13 bullet, and this item covers it. Not covered here: plain `connect` still prints "Canvas rejected that token." when Canvas is unreachable. That message is S2-13's to fix.
+**Overlap with S2-13:** a token rejected partway through a sync is also an S2-13 bullet, and this item covers it. An unreachable Canvas in `connect` now prints only "Could not reach Canvas at <address>", never "Canvas rejected that token." ([#60](https://github.com/BradyZapf/CptS_322_BARD/issues/60)). The 403 and 500 messages are still S2-13's.
+
+**Saving the token (#60):** `connect_canvas()` writes the new config to a 0600 temp file in the same folder, fsyncs it, then `os.replace`s it over the old one. A crash or full disk partway through leaves the old token as it was and no temp file behind.

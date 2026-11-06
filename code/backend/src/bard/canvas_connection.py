@@ -55,6 +55,15 @@ T = TypeVar("T")
 MAX_TRIES = 5        # one first try plus four retries
 FIRST_WAIT = 1.0     # seconds; doubles after every failed try (1, 2, 4, 8)
 REQUEST_TIMEOUT = 30  # seconds; a Canvas that has not answered by then counts as broken
+# Canvas gives each token a quota (about 700 "units") and reports what is left in the
+# X-Rate-Limit-Remaining header of every answer. Below LOW_QUOTA the next request waits first.
+QUOTA_HEADER = "X-Rate-Limit-Remaining"
+LOW_QUOTA = 100.0
+# Canvas's bucket holds about 700 units and leaks about 10 a second, so waiting shortfall / 10
+# seconds earns back what was missing. At least QUOTA_WAIT_MIN, at most QUOTA_WAIT_MAX.
+QUOTA_LEAK_PER_SECOND = 10.0
+QUOTA_WAIT_MIN = 0.5
+QUOTA_WAIT_MAX = 10.0
 
 # Announcements: Canvas's default window is only the last 14 days, so ask for the whole course.
 ANNOUNCEMENTS_FROM = "2000-01-01"
@@ -119,6 +128,12 @@ class CanvasConnection:
         self.canvas_url = canvas_url.rstrip("/")
         self._access_token = access_token  # leading underscore = private ("-" in the UML)
         self.last_synced: datetime | None = None
+        self._quota_left: float | None = None  # from the last answer; None if Canvas did not say
+        # Called with the name of each part of a course just before it is read (live progress).
+        self.on_part: Callable[[str], None] | None = None
+        # What each part of the course LAST read answered: part -> "ok", "empty" or "blocked: <why>".
+        # A side channel for the coverage report; get_course_items still returns only the items.
+        self.part_results: dict[str, str] = {}
 
     def _client(self) -> Canvas:
         """A canvasapi client for this URL and token. Only GET calls are ever made through it."""
@@ -129,8 +144,27 @@ class CanvasConnection:
         # private attribute (Python renames `__requester` to `_Canvas__requester`); give that
         # session's requests a default timeout. Files downloaded later share this session.
         session = canvas._Canvas__requester._session
-        session.request = functools.partial(session.request, timeout=REQUEST_TIMEOUT)
+        send = functools.partial(session.request, timeout=REQUEST_TIMEOUT)
+
+        def send_politely(*args, **kwargs):
+            """S2-05. Every request, including file downloads, passes through here."""
+            if self._quota_left is not None and self._quota_left < LOW_QUOTA:
+                shortfall = LOW_QUOTA - self._quota_left
+                self._quota_left = None  # forget it: the next answer says how things are now
+                _sleep(min(shortfall / QUOTA_LEAK_PER_SECOND + QUOTA_WAIT_MIN, QUOTA_WAIT_MAX))
+            response = send(*args, **kwargs)
+            self._note_quota(response)
+            return response
+
+        session.request = send_politely
         return canvas
+
+    def _note_quota(self, response: requests.Response) -> None:
+        """Remember how much quota Canvas says is left. A missing or odd header means unknown."""
+        try:
+            self._quota_left = float(response.headers[QUOTA_HEADER])
+        except (KeyError, ValueError):
+            self._quota_left = None
 
     def _scrub(self, text: str) -> str:
         """Remove the access token from text that may leave this object."""
@@ -267,8 +301,11 @@ class CanvasConnection:
         canvasapi follows every next-page link.
 
         A part of the course the instructor switched off (Files tab hidden, Pages turned off)
-        answers NotAvailable. That part is skipped and the rest is still returned. TokenRejected
-        and CanvasUnreachable are not caught: they stop the sync.
+        answers NotAvailable. That part is skipped and the rest is still returned. A part that
+        still fails after every retry is recorded as an error in part_results, and the other
+        parts are still read (S2-03). If every part failed, Canvas is down for this course:
+        CanvasUnreachable reaches the sync, which reports the course as missed. TokenRejected
+        is not caught here either.
 
         Modules come back too, each with its items (S2-02). Files are found three ways and kept
         once each: the Files list, module items of type File, and /files/<id> links in the HTML
@@ -276,6 +313,7 @@ class CanvasConnection:
         is fetched too. A course's syllabus comes back as a Page called "Syllabus".
         """
         canvas = self._client()
+        self.part_results = {}
 
         # Step 1: the course itself (one GET). syllabus_body is the syllabus HTML, if any.
         canvas_course = self._call(
@@ -284,14 +322,15 @@ class CanvasConnection:
         course.syllabus = getattr(canvas_course, "syllabus_body", None) or ""
 
         # Step 2: assignments, pages and announcements, each turned into one of ours.
-        canvas_assignments = self._list_or_empty(canvas_course.get_assignments)
+        canvas_assignments = self._list_or_empty("assignments", canvas_course.get_assignments)
         assignments = [self._assignment(a, course) for a in canvas_assignments]
         # The plain page list leaves out each page's body, so ask for it.
-        canvas_pages = self._list_or_empty(lambda: canvas_course.get_pages(include=["body"]))
+        canvas_pages = self._list_or_empty(
+            "pages", lambda: canvas_course.get_pages(include=["body"]))
         pages = [self._page(p, course) for p in canvas_pages]
         # Without a date range Canvas returns only the last 14 days of announcements.
         announcements = [self._announcement(t, course) for t in self._list_or_empty(
-            lambda: canvas.get_announcements(context_codes=[f"course_{course.course_id}"],
+            "announcements", lambda: canvas.get_announcements(context_codes=[f"course_{course.course_id}"],
                                              start_date=ANNOUNCEMENTS_FROM,
                                              end_date=ANNOUNCEMENTS_TO))]
 
@@ -315,16 +354,38 @@ class CanvasConnection:
             pages.append(Page(item_id=course.course_id, title="Syllabus", course_code=course.code,
                               body=course.syllabus))
 
+        errors = [r for r in self.part_results.values() if r.startswith("error: ")]
+        if errors and len(errors) == len(self.part_results):
+            raise CanvasUnreachable(errors[0].removeprefix("error: "))
         return [*scan.modules, *assignments, *announcements, *pages, *files]
 
-    def _list_or_empty(self, fn: Callable[[], Iterable[T]]) -> list[T]:
+    def _list_or_empty(self, part: str | None, fn: Callable[[], Iterable[T]]) -> list[T]:
         """Read one whole Canvas list (every page) through _call. A part of the course the
         instructor switched off answers NotAvailable: treat it as empty, so the rest of the
-        course still syncs. (Reporting what was switched off belongs to the coverage report.)"""
+        course still syncs. (Reporting what was switched off belongs to the coverage report.)
+        `part` names what is being read ("files", "pages", ...) for the live progress; None for
+        a read too small to announce."""
+        if part and self.on_part:
+            self.on_part(part)
         try:
-            return self._call(lambda: list(fn()))
-        except NotAvailable:
+            result = self._call(lambda: list(fn()))
+        except NotAvailable as e:
+            if part:
+                self.part_results[part] = f"blocked: {e.reason}"
             return []
+        except CanvasUnreachable as e:
+            if not part:
+                raise
+            self._part_failed(part, e)
+            return []
+        if part:
+            self.part_results[part] = "ok" if result else "empty"
+        return result
+
+    def _part_failed(self, part: str, e: CanvasUnreachable) -> None:
+        """S2-03. A read inside `part` still failed after every retry: the coverage report shows
+        that part as error with this reason, and the rest of the course is still read."""
+        self.part_results[part] = f"error: {e}"
 
     def _modules(self, canvas_course: CanvasCourse, course: Course) -> ModuleScan:
         """S2-02. Every module with its items in Canvas's order, read once, plus what they point
@@ -332,8 +393,12 @@ class CanvasConnection:
         modules: list[Module] = []
         file_links: dict[int, tuple[str, str]] = {}
         page_slugs: list[str] = []
-        for canvas_module in self._list_or_empty(canvas_course.get_modules):
-            items = self._list_or_empty(canvas_module.get_module_items)
+        for canvas_module in self._list_or_empty("modules", canvas_course.get_modules):
+            try:
+                items = self._list_or_empty(None, canvas_module.get_module_items)
+            except CanvasUnreachable as e:
+                self._part_failed("modules", e)
+                items = []
             modules.append(Module(
                 item_id=canvas_module.id, title=getattr(canvas_module, "name", ""),
                 course_code=course.code,
@@ -402,6 +467,9 @@ class CanvasConnection:
                 canvas_page = self._call(lambda slug=slug: canvas_course.get_page(slug))
             except NotAvailable:
                 continue
+            except CanvasUnreachable as e:
+                self._part_failed("pages", e)
+                continue
             page_ids[slug] = canvas_page.page_id
             found.append(self._page(canvas_page, course))
         return found
@@ -414,7 +482,7 @@ class CanvasConnection:
         found: dict[int, CourseFile] = {}
 
         # 1. The Files list. Empty when the instructor hides the Files tab.
-        for f in self._list_or_empty(canvas_course.get_files):
+        for f in self._list_or_empty("files", canvas_course.get_files):
             found.setdefault(f.id, self._course_file(f, course, "files"))
 
         # 2 and 3 give only a file id (and maybe a title). file id -> (where, title)
@@ -434,6 +502,10 @@ class CanvasConnection:
         """Look up a file known only by its id (from a module or a link)."""
         try:
             canvas_file = self._call(lambda: canvas.get_file(file_id))
+        except CanvasUnreachable as e:
+            self._part_failed("files", e)
+            return CourseFile(item_id=file_id, title=title or f"file {file_id}",
+                              course_code=course.code, linked_from=where)
         except NotAvailable:
             # Still list it: the sync's fetch_file then records it as missed, with the reason,
             # instead of the file silently disappearing (mission rule 8: honest reporting).

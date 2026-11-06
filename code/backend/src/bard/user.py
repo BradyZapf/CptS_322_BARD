@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import tempfile
 from datetime import datetime
 from pathlib import Path
 
@@ -32,31 +33,38 @@ class User:
     def connect_canvas(self, url: str, token: str) -> bool:
         """FR-01, NFR-06. Check the token with Canvas; only if Canvas accepts it, save the
         address and token to config_file, readable by this user only (chmod 600).
-        A rejected token is NOT saved."""
-        import requests  # local import keeps the module-level namespace tidy
-
+        A rejected token is NOT saved. If Canvas cannot be reached, the requests
+        ConnectionError or Timeout is passed to the caller, which says so: that is not a
+        rejection, so it must not say "rejected"."""
         conn = CanvasConnection(url, token)
         try:
             conn.verify_token()
         except TokenRejected:
             return False
-        except (requests.ConnectionError, requests.Timeout) as exc:
-            print(f"Could not reach Canvas: {exc}")
-            return False
 
-        # --- save the config file with owner-only permissions ---
-        path = str(self.config_file)
-        self.config_file.parent.mkdir(parents=True, exist_ok=True)
-
-        payload = json.dumps({"url": url, "token": token})
-        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with open(fd, "w") as f:
-            f.write(payload)
-        # also chmod in case the file already existed before this call
-        os.chmod(path, 0o600)
-
+        self._save_config(json.dumps({"url": url, "token": token}))
         self.connection = conn
         return True
+
+    def _save_config(self, payload: str) -> None:
+        """NFR-06, #60. Write the config next to the old one, then swap it in with os.replace,
+        so a crash or a full disk partway through leaves the old token as it was, never an
+        empty file. mkstemp creates the temp file 0600, so the token is never readable by
+        anyone else, not even for a moment. If anything fails, the temp file is removed and
+        the error goes to the caller."""
+        folder = self.config_file.parent
+        folder.mkdir(parents=True, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(dir=folder, prefix=".config-", suffix=".tmp")
+        try:
+            with open(fd, "w", encoding="utf-8") as f:
+                f.write(payload)
+                f.flush()
+                os.fsync(f.fileno())
+            os.chmod(tmp, 0o600)  # mkstemp already does this on POSIX; say it plainly
+            os.replace(tmp, self.config_file)
+        except BaseException:
+            Path(tmp).unlink(missing_ok=True)
+            raise
 
     def load_connection(self) -> CanvasConnection | None:
         """The saved connection, or None if the user has not connected yet."""
@@ -170,11 +178,15 @@ class User:
     def delete_all_data(self) -> bool:
         """FR-10. Remove the archive folder and the saved token. Returns False and names what
         could not be removed if anything is left. Refuses, removing nothing, if storage_path
-        is somewhere dangerous (see _unsafe_reason)."""
-        reason = self._unsafe_reason()
-        if reason:
-            print(f"Refusing to erase {self.storage_path}: {reason}. Nothing was removed. "
-                  "Check the BARD_HOME setting.")
+        is somewhere dangerous (see _unsafe_reason).
+
+        A refusal keeps the token too (#14). A refusal means BARD_HOME is set wrong, so the
+        user fixes it and erases again. Removing only the token would leave a half-done erase
+        that looks finished while the archive is still on disk. The CLI reminds the user to
+        revoke the token in Canvas either way."""
+        refusal = self.erase_refusal()
+        if refusal:
+            print(refusal)
             return False
 
         failed: list[str] = []
@@ -194,9 +206,23 @@ class User:
         self.courses = []
         return not failed
 
+    def erase_refusal(self) -> str | None:
+        """S2-14. The message saying why erase will not touch storage_path, or None if it may.
+        The CLI calls this before asking "Type yes", and delete_all_data calls it again so the
+        web page gets the same protection."""
+        reason = self._unsafe_reason()
+        if reason is None:
+            return None
+        return (f"Refusing to erase {self.storage_path}: {reason}. Nothing was removed, "
+                "not even the saved token. Check the BARD_HOME setting.")
+
     def _unsafe_reason(self) -> str | None:
         """Why storage_path must not be erased, or None if it is safe. A wrong BARD_HOME must
-        never delete the home folder or a whole drive. normcase: Windows paths ignore case."""
+        never delete the home folder or a whole drive. normcase: Windows paths ignore case.
+        A link is refused before it is resolved: erase never follows one (#14)."""
+        if self.storage_path.is_symlink():
+            return (f"it is a link to {self.storage_path.readlink()}, and erase does not follow "
+                    "links")
         folder = Path(os.path.normcase(self.storage_path.resolve()))
         home = Path(os.path.normcase(Path.home().resolve()))
         if folder == folder.parent:
