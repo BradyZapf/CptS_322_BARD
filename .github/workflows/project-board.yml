@@ -1,0 +1,212 @@
+# Moves cards on the sprint board by themselves, so nobody has to drag them:
+#   issue opened            -> To Do
+#   issue reopened          -> To Do
+#   issue assigned          -> In Progress
+#   issue unassigned (nobody left) -> To Do
+#   PR opened / ready / review requested / description edited
+#                           -> each issue the PR closes -> Code Review
+#   PR closed WITHOUT merging, or turned back into a draft
+#                           -> its issues go back to In Progress
+# A card only moves when it is in a sensible column to move from (see "onlyFrom" below).
+# "Done" is left to the board's built-in workflows (issue closed, PR merged).
+#
+# SETUP: needs a repo secret called PROJECT_TOKEN (see CONTRIBUTING.md). The automatic
+# GITHUB_TOKEN cannot edit a board that belongs to a user account, so we use our own token.
+# Without the secret the job prints a notice and still passes (green).
+name: Project board
+
+# "on" says WHEN this runs. Each event has "types" = which kind of that event.
+on:
+  issues:
+    types: [opened, reopened, assigned, unassigned]   # new, reopened, someone (un)assigned
+  # Why pull_request_target and not pull_request?
+  #   - pull_request from a fork gets NO secrets, so we could not use PROJECT_TOKEN.
+  #   - pull_request_target runs with secrets, which is why it is dangerous if it ever runs
+  #     code from the PR. So this file must NEVER check out or run the PR's code.
+  #     It only reads facts about the PR (its number), which is safe even for forks.
+  pull_request_target:
+    # edited = title or description changed. Needed because people often add "Closes #n"
+    #   AFTER opening the PR; without it the card would never move.
+    # closed = merged OR closed without merging (the script tells them apart).
+    # converted_to_draft = someone put the PR back to "draft".
+    types: [opened, reopened, edited, ready_for_review, review_requested, closed, converted_to_draft]
+
+# Permissions of the built-in GITHUB_TOKEN: read-only. The board is written with PROJECT_TOKEN.
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+
+# Settings in one place so they are easy to change.
+env:
+  PROJECT_OWNER: BradyZapf   # the user account that owns the board
+  PROJECT_NUMBER: 5          # the number in the board URL: .../projects/5
+
+jobs:
+  move:
+    runs-on: ubuntu-latest
+    # Skip draft PRs (not ready for review). When a draft is marked ready, the
+    # ready_for_review event runs this job. Issue events always run. So do "closed" and
+    # "converted_to_draft", because those are exactly the events that MOVE a card back.
+    if: >-
+      github.event_name == 'issues' ||
+      github.event.action == 'closed' ||
+      github.event.action == 'converted_to_draft' ||
+      github.event.pull_request.draft == false
+    # concurrency = runs with the same group name wait in line and go one at a time.
+    # An issue created WITH an assignee fires "opened" and "assigned" at the same moment;
+    # without this they could race and the wrong Status could win. The group name is the
+    # issue or PR number. cancel-in-progress: false means queue them, do not cancel.
+    concurrency:
+      group: board-${{ github.event.issue.number || github.event.pull_request.number }}
+      cancel-in-progress: false
+    steps:
+      # actions/github-script lets us write the steps as JavaScript instead of shell.
+      - uses: actions/github-script@v7
+        env:
+          PROJECT_TOKEN: ${{ secrets.PROJECT_TOKEN }}
+        with:
+          script: |
+            // No secret yet? Say so and stop. "return" ends the script and the job stays green.
+            if (!process.env.PROJECT_TOKEN) {
+              core.notice('PROJECT_TOKEN secret is not set, so the board was not updated. See CONTRIBUTING.md.');
+              return;
+            }
+            // The default `github` client uses GITHUB_TOKEN, which cannot write the board.
+            // So we make a second client that uses our PROJECT_TOKEN.
+            const gh = getOctokit(process.env.PROJECT_TOKEN);
+
+            // STEP 1: ask GitHub (GraphQL "query" = read-only question) for the board.
+            //   user(login) -> projectV2(number)    find the board by owner and number
+            //   id                                   the board's internal id
+            //   field(name: "Status")                the Status column setting
+            //   options { id name }                  its choices: To Do, In Progress, ...
+            // We look ids up by NAME every run, so nothing is hard-coded and renaming
+            // a column's id never breaks us.
+            // If the token is expired or has too few permissions, GitHub answers with an error.
+            // We catch it only to add a clear hint, then fail the job (red) on purpose.
+            let lookup;
+            try {
+              lookup = await gh.graphql(`
+              query($owner: String!, $number: Int!) {
+                user(login: $owner) {
+                  projectV2(number: $number) {
+                    id
+                    field(name: "Status") {
+                      ... on ProjectV2SingleSelectField { id options { id name } }
+                    }
+                  }
+                }
+              }`, { owner: process.env.PROJECT_OWNER, number: Number(process.env.PROJECT_NUMBER) });
+            } catch (err) {
+              throw new Error(`Could not read the board with PROJECT_TOKEN (expired, or missing the project scope?): ${err.message}`);
+            }
+            const project = lookup?.user?.projectV2;
+            if (!project) throw new Error(`Board ${process.env.PROJECT_OWNER}/projects/${process.env.PROJECT_NUMBER} not found. Check PROJECT_OWNER and PROJECT_NUMBER, and that the token can see it.`);
+            const status = project.field;
+            if (!status) throw new Error('The board has no "Status" field (was the column renamed?).');
+            // Turn a column name like "Code Review" into its id; fail loudly if it is missing.
+            const optionId = (name) => {
+              const o = status.options.find((x) => x.name === name);
+              if (!o) throw new Error(`Status option "${name}" not found on the board`);
+              return o.id;
+            };
+
+            // STEP 2: decide WHICH issues to move and WHERE to.
+            let issueIds = [];   // the issues' internal ids (GraphQL calls them node ids)
+            let target;          // the column to move them to
+            // onlyFrom = "only move a card if its CURRENT column is in this list".
+            // '' means "no Status yet". null means "always move, whatever it is now".
+            // Example: onlyFrom = ['', 'To Do'] and the card is in "Code Review"
+            //   -> we leave it alone, so automation never drags a card backwards.
+            let onlyFrom;
+            if (context.eventName === 'issues') {
+              issueIds = [context.payload.issue.node_id];
+              const action = context.payload.action;
+              target = action === 'assigned' ? 'In Progress' : 'To Do';   // opened/reopened/unassigned -> To Do
+              // opened: only if no Status yet (so it cannot undo an assignment that arrived first).
+              // assigned: only from empty or To Do (a 2nd assignee changes nothing).
+              // unassigned: only from In Progress, and only when NOBODY is assigned any more.
+              // reopened: always goes back to To Do.
+              if (action === 'unassigned') {
+                if (context.payload.issue.assignees.length > 0) {
+                  core.info('Issue still has an assignee, nothing to do.');
+                  return;
+                }
+                onlyFrom = ['In Progress'];
+              } else {
+                onlyFrom = action === 'assigned' ? ['', 'To Do'] : action === 'opened' ? [''] : null;
+              }
+            } else {
+              const action = context.payload.action;
+              const prInfo = context.payload.pull_request;
+              // A merged PR is finished: the board's built-in workflow moves the issue to Done.
+              if (action === 'closed' && prInfo.merged) {
+                core.info('PR was merged, the built-in workflow handles Done.');
+                return;
+              }
+              // Editing the text of an already-closed PR must not send its issues to review.
+              if (action === 'edited' && prInfo.state !== 'open') {
+                core.info('PR is not open, ignoring the edit.');
+                return;
+              }
+              // A pull request event. Ask GraphQL which issues this PR will close, i.e. the
+              // ones named after "Closes #n" in its description (closingIssuesReferences).
+              const pr = await gh.graphql(`
+                query($owner: String!, $repo: String!, $number: Int!) {
+                  repository(owner: $owner, name: $repo) {
+                    pullRequest(number: $number) {
+                      closingIssuesReferences(first: 20) { nodes { id number } }
+                    }
+                  }
+                }`, { owner: context.repo.owner, repo: context.repo.repo, number: context.payload.pull_request.number });
+              const issues = pr.repository.pullRequest.closingIssuesReferences.nodes;
+              if (issues.length === 0) {
+                core.notice('This PR closes no issue (no "Closes #n" in the body), nothing to move.');
+                return;
+              }
+              issueIds = issues.map((i) => i.id);
+              if (action === 'closed' || action === 'converted_to_draft') {
+                // Closed without merging, or back to draft: the work is not in review any more.
+                // Only cards sitting in Code Review go back, so Testing/Done are never touched.
+                target = 'In Progress';
+                onlyFrom = ['Code Review'];
+              } else {
+                target = 'Code Review';
+                onlyFrom = ['', 'To Do', 'In Progress'];   // never pull a card back from Testing/Done
+              }
+            }
+
+            // STEP 3: for each issue, put it on the board and set its Status.
+            for (const contentId of issueIds) {
+              // Mutation = a GraphQL write. addProjectV2ItemById puts the issue on the board.
+              // If it is already there, GitHub returns the existing card, so this is safe to
+              // repeat. We also read back the card's current Status.
+              const added = await gh.graphql(`
+                mutation($project: ID!, $content: ID!) {
+                  addProjectV2ItemById(input: {projectId: $project, contentId: $content}) {
+                    item {
+                      id
+                      fieldValueByName(name: "Status") {
+                        ... on ProjectV2ItemFieldSingleSelectValue { name }
+                      }
+                    }
+                  }
+                }`, { project: project.id, content: contentId });
+              const item = added.addProjectV2ItemById.item;
+              const current = item.fieldValueByName?.name ?? '';   // '' = no Status set yet
+              // Respect onlyFrom (see above): skip cards that should not move.
+              if (onlyFrom && !onlyFrom.includes(current)) {
+                core.info(`Leaving ${contentId} in "${current}" (not moving it to ${target}).`);
+                continue;
+              }
+              // Second mutation: set this card's Status to the chosen column.
+              await gh.graphql(`
+                mutation($project: ID!, $item: ID!, $field: ID!, $option: String!) {
+                  updateProjectV2ItemFieldValue(input: {
+                    projectId: $project, itemId: $item, fieldId: $field,
+                    value: {singleSelectOptionId: $option}
+                  }) { projectV2Item { id } }
+                }`, { project: project.id, item: item.id, field: status.id, option: optionId(target) });
+              core.info(`Moved ${contentId}: "${current}" -> "${target}"`);
+            }
