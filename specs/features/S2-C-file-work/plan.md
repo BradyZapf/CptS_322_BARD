@@ -31,8 +31,23 @@ or `specs/`.
 
 ## S2-12 Download the user's own submission files
 
-(Fill in here when built — `src/bard/canvas_connection.py` (ask for the user's own submission),
-`src/bard/sync.py` (save its attachments); same `tests/test_s2_c_file_work.py`.)
+- `src/bard/canvas_connection.py`: new `get_own_submission(course, assignment_id)`. Always asks
+  for user "self" (`get_assignment(id).get_submission("self")`) — there is no parameter through
+  which it could ask for anyone else's. Returns `None` when nothing has been handed in
+  (`submitted_at` is empty); otherwise a `Submission` with its attachments as `CourseFile`s
+  (not yet downloaded — same shape `get_course_items()` hands back files in).
+- `src/bard/sync.py`: new `_save_submission(course, assignment, report)`, called for every
+  `Assignment` right after its own `.md` is saved. `_save_file` gained two optional parameters,
+  `folder` and `name` (both default to the old behaviour, so every existing caller is
+  unaffected), so submission attachments reuse all of its existing logic — the unchanged-file
+  skip, `extract_text()`/`check_still_readable()`, status and report — saved under the course's
+  new `submissions/` folder, named `"<assignment title>-<file name>"`.
+- `tests/fakes.py`: `FakeConnection.get_own_submission()` returns `None` (it predates
+  submissions and has none); `FakeCanvas`'s `_course_route` gained a route for
+  `GET .../assignments/:id` (not just the list), since canvasapi fetches the assignment object
+  before its submission.
+- `tests/test_s2_c_file_work.py`: the S2-12 tests, same shared file.
+- `models.py`: unchanged — `Submission.attachments` already existed (added in #34).
 
 Do not change other files except to wire your code in. If a later item needs a `models.py`
 change beyond a default-valued addition, open a separate pull request for it first.

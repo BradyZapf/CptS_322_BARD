@@ -38,7 +38,17 @@ from canvasapi.exceptions import (
 from canvasapi.file import File as CanvasFile
 from canvasapi.page import Page as CanvasPage
 
-from .models import Announcement, Assignment, Course, CourseFile, CourseItem, Module, ModuleItem, Page
+from .models import (
+    Announcement,
+    Assignment,
+    Course,
+    CourseFile,
+    CourseItem,
+    Module,
+    ModuleItem,
+    Page,
+    Submission,
+)
 
 T = TypeVar("T")
 
@@ -557,3 +567,26 @@ class CanvasConnection:
         # Step 3: download the file. canvasapi's get_contents() sends a GET to the download link;
         # binary=True returns raw bytes, so PDFs and Word files are not mangled as text.
         return self._call(lambda: canvas_file.get_contents(binary=True))
+
+    def get_own_submission(self, course: Course, assignment_id: int) -> Submission | None:
+        """FR-03, S2-12. The user's own submission to one assignment, never another student's:
+        "self" is the only user this ever asks for (GET .../submissions/self), so there is no
+        way to name anyone else's. None if nothing has been handed in yet. Its files are not
+        downloaded here (fetch_file does that); each comes back as a CourseFile, same as
+        get_course_items hands back files.
+        """
+        canvas_submission = self._call(
+            lambda: self._client().get_course(course.course_id)
+            .get_assignment(assignment_id).get_submission("self")
+        )
+        if not getattr(canvas_submission, "submitted_at", None):
+            return None
+        where = f"assignment {assignment_id}"
+        attachments = [self._course_file(f, course, where) for f in canvas_submission.attachments]
+        return Submission(
+            submission_id=canvas_submission.id,
+            submitted_at=_utc(getattr(canvas_submission, "submitted_at", None)),
+            grade=getattr(canvas_submission, "grade", None),
+            score=getattr(canvas_submission, "score", None),
+            attachments=attachments,
+        )
