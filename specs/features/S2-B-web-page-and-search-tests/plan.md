@@ -2,7 +2,7 @@
 
 This plan covers S2-06 (local web page: course list and item view) and
 S2-07 (search box on the web page).
-S2-08 and S2-09 are addressed in a follow-up.
+S2-08 is planned in its own section at the end. S2-09 is addressed in a follow-up.
 
 ## Stories
 
@@ -57,3 +57,24 @@ passing on Ubuntu, Windows and macOS.
   sufficient for now?
 - Is the `code/frontend/src/bard_web/` module structure the right long-term home for
   security tests (S2-09), or should they live alongside the backend tests?
+
+## S2-08 Tests for search
+
+Carried over from Sprint 1 as #13. Tests only: no product code changes.
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `code/backend/tests/test_s1_04_search.py` | Six tests, one per acceptance criterion in `requirements.md` (S2-08) |
+| `specs/features/S2-B-web-page-and-search-tests/plan.md` | This section |
+
+`docs/TraceabilityMatrix.md` already maps FR-06 to `test_s1_04_search`, so it needs no change.
+
+### Decisions made alone
+
+- The sync test uses `FakeCanvas` (the shared fake from S2-16, #53) with a fake syllabus,
+  not the older `FakeConnection`, because #55 moves new tests onto `FakeCanvas`.
+- Each test was checked by breaking the code it covers (no delete before re-insert, ordering
+  by insertion instead of rank, unquoted operators, an item key without the item kind, no
+  `index.add_item` call in `sync.py`, an ignored limit). Each break made its test fail.
