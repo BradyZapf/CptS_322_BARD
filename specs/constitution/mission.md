@@ -29,8 +29,10 @@ not merged, however good the feature is.
 3. **The folder is the interface.** Every original is kept, and every readable thing gets a
    plain-text `.md` copy beside it. The search index is built from those files and can always
    be rebuilt. Anything (an editor, grep, an AI agent) can read the folder.
-4. **BARD has no AI inside it.** It never generates answers. Search returns real passages
-   with their source. AI is the user's own choice, connected from outside.
+4. **BARD is not an AI or a chatbot.** It is an archive and search tool for your own
+   coursework. It does not answer questions or write text. AI tools can connect to it (through
+   the export and the local MCP connector) and use what it finds, but the AI lives in those
+   tools, not in BARD.
 5. **Token safety (NFR-06).** The token lives in one file readable only by the user, and only
    `CanvasConnection` uses it. It is never printed, logged or committed.
 6. **Works offline after a sync (NFR-02)**, and on Windows, macOS and Linux (NFR-07).
