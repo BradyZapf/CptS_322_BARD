@@ -66,15 +66,18 @@ jobs:
         env:
           PROJECT_TOKEN: ${{ secrets.PROJECT_TOKEN }}
         with:
+          # Hand PROJECT_TOKEN to the action itself, so its built-in `github` client can write the board.
+          # Falls back to the read-only GITHUB_TOKEN only so the step can start; the script then stops at the notice below.
+          github-token: ${{ secrets.PROJECT_TOKEN || github.token }}
           script: |
             // No secret yet? Say so and stop. "return" ends the script and the job stays green.
             if (!process.env.PROJECT_TOKEN) {
               core.notice('PROJECT_TOKEN secret is not set, so the board was not updated. See CONTRIBUTING.md.');
               return;
             }
-            // The default `github` client uses GITHUB_TOKEN, which cannot write the board.
-            // So we make a second client that uses our PROJECT_TOKEN.
-            const gh = getOctokit(process.env.PROJECT_TOKEN);
+            // `github` is already signed in with PROJECT_TOKEN (the github-token input above).
+            // getOctokit is not available inside github-script@v7, which is why every run failed with a ReferenceError.
+            const gh = github;
 
             // STEP 1: ask GitHub (GraphQL "query" = read-only question) for the board.
             //   user(login) -> projectV2(number)    find the board by owner and number
