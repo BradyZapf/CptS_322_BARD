@@ -23,6 +23,7 @@ from this table, so add a row when you add either.
 | FR-10 | Erasing everything | Delete all data | User | erasing_everything | test_s1_05_erase | S1-05, S2-14 |
 | FR-06, NFR-05 | Local web page: course list and item view | Browse/view archive | WebServer, archive, modules | (none) | test_s2_b_web_page | S2-06 |
 | NFR-05 | Basic web security tests for the page | Browse/view archive | WebServer | (none) | test_s2_09_web_security | S2-09 |
+| NFR-01, NFR-05 | Public demo deployment: Docker image with made-up data only (course assignment, no FR) | Browse/view archive | WebServer | (none) | test_deploy | -- |
 
 | NFR | Checked by |
 |---|---|
