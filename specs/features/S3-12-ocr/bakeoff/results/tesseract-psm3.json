@@ -1,0 +1,76 @@
+{
+ "engine": "tesseract",
+ "load_seconds": 0.02,
+ "rows": [
+  {
+   "file": "1_clean_handout.pdf",
+   "pages": 1,
+   "seconds": 0.93,
+   "char_similarity": 1.0,
+   "word_recall": 1.0,
+   "nospace_similarity": 1.0,
+   "chars_out": 369,
+   "sample_out": "cpts 101 midterm review handout exam 1 is on october 12 in sloan 175 at 9:10 am. bring a p"
+  },
+  {
+   "file": "2_photocopy_handout.pdf",
+   "pages": 1,
+   "seconds": 1.19,
+   "char_similarity": 0.946,
+   "word_recall": 0.97,
+   "nospace_similarity": 0.954,
+   "chars_out": 370,
+   "sample_out": "cpts. 101 midterm review handout exam 1 is-on october. 12.in sloan 175 at 9: 10am: bring a"
+  },
+  {
+   "file": "3_slide.pdf",
+   "pages": 1,
+   "seconds": 1.31,
+   "char_similarity": 0.977,
+   "word_recall": 1.0,
+   "nospace_similarity": 0.986,
+   "chars_out": 177,
+   "sample_out": "lecture 7: sorting algorithms - merge sort runs in o(n log n) time - quicksort is fast on "
+  },
+  {
+   "file": "4_small_print_2pages.pdf",
+   "pages": 2,
+   "seconds": 3.22,
+   "char_similarity": 0.725,
+   "word_recall": 0.98,
+   "nospace_similarity": 0.699,
+   "chars_out": 2443,
+   "sample_out": "anoanf wn = o . week of in ten deadline loses one you monday the. . email within unless we"
+  },
+  {
+   "file": "5_photo_of_text.png",
+   "pages": 1,
+   "seconds": 0.48,
+   "char_similarity": 0.949,
+   "word_recall": 0.879,
+   "nospace_similarity": 0.958,
+   "chars_out": 183,
+   "sample_out": "re cots 101 midterm review handout | exam 1is on. october 12. in sloan 175 at 9: 10: am. ~"
+  },
+  {
+   "file": "6_diagram_no_text.png",
+   "pages": 1,
+   "seconds": 0.31,
+   "char_similarity": null,
+   "word_recall": null,
+   "nospace_similarity": null,
+   "chars_out": 0,
+   "sample_out": ""
+  },
+  {
+   "file": "7_two_columns.pdf",
+   "pages": 1,
+   "seconds": 0.74,
+   "char_similarity": 0.996,
+   "word_recall": 0.977,
+   "nospace_similarity": 0.995,
+   "chars_out": 254,
+   "sample_out": "week 1: introduction read chapter one install the compiler quiz on friday week 2: variable"
+  }
+ ]
+}
