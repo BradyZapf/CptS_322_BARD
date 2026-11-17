@@ -1,0 +1,76 @@
+{
+ "engine": "rapidocr",
+ "load_seconds": 0.91,
+ "rows": [
+  {
+   "file": "1_clean_handout.pdf",
+   "pages": 1,
+   "seconds": 6.28,
+   "char_similarity": 0.997,
+   "word_recall": 0.94,
+   "nospace_similarity": 1.0,
+   "chars_out": 362,
+   "sample_out": "cpts 101midterm reviewhandout exam 1 is on october 12 in sloan 175 at 9:10 am. bring a pen"
+  },
+  {
+   "file": "2_photocopy_handout.pdf",
+   "pages": 1,
+   "seconds": 4.15,
+   "char_similarity": 0.986,
+   "word_recall": 0.91,
+   "nospace_similarity": 0.995,
+   "chars_out": 354,
+   "sample_out": "cpts 101 midterm review handout exam 1 is on october 12in sloan 175 at 9:10 am bring a pen"
+  },
+  {
+   "file": "3_slide.pdf",
+   "pages": 1,
+   "seconds": 4.32,
+   "char_similarity": 0.967,
+   "word_recall": 0.806,
+   "nospace_similarity": 0.986,
+   "chars_out": 168,
+   "sample_out": "lecture 7: sorting algorithms -merge sort runs in o(n log n) time - quicksort is fast on a"
+  },
+  {
+   "file": "4_small_print_2pages.pdf",
+   "pages": 2,
+   "seconds": 43.17,
+   "char_similarity": 0.266,
+   "word_recall": 0.116,
+   "nospace_similarity": 1.0,
+   "chars_out": 2029,
+   "sample_out": "1.closeemail inrequeststenpercentwithindaylabsof. 2.tenarethelosesperbasementthepercentqui"
+  },
+  {
+   "file": "5_photo_of_text.png",
+   "pages": 1,
+   "seconds": 11.46,
+   "char_similarity": 0.991,
+   "word_recall": 0.939,
+   "nospace_similarity": 0.993,
+   "chars_out": 169,
+   "sample_out": "cpts 101 midterm review handout exam 1is on october 12 in sloan 175 at 9.10 am. bring a pe"
+  },
+  {
+   "file": "6_diagram_no_text.png",
+   "pages": 1,
+   "seconds": 8.09,
+   "char_similarity": null,
+   "word_recall": null,
+   "nospace_similarity": null,
+   "chars_out": 11,
+   "sample_out": "dhohohohoho"
+  },
+  {
+   "file": "7_two_columns.pdf",
+   "pages": 1,
+   "seconds": 21.14,
+   "char_similarity": 0.444,
+   "word_recall": 0.955,
+   "nospace_similarity": 0.498,
+   "chars_out": 248,
+   "sample_out": "week 1:introduction week 3: loops read chapter one read chapter three install the compiler"
+  }
+ ]
+}

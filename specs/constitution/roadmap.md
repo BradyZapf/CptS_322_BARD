@@ -10,5 +10,7 @@ The order of work, as a product (the team picks what goes into each sprint):
 3. **Ways to use it with AI:** export a selection as one document, and the stdio MCP connector for desktop AI apps.
 4. **Install on Windows, macOS and Linux, then polish.**
 
+Sprint 3 adds OCR for scanned PDFs (S3-12), run on the user's computer and optional to install.
+
 Icebox (maybe never): instructor features (several courses and sections), search by meaning,
-OCR for scanned PDFs, text from PowerPoint and Excel.
+text from PowerPoint and Excel.

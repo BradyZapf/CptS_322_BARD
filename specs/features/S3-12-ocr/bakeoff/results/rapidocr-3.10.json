@@ -1,0 +1,76 @@
+{
+ "engine": "rapidocr3",
+ "load_seconds": 1.0,
+ "rows": [
+  {
+   "file": "1_clean_handout.pdf",
+   "pages": 1,
+   "seconds": 29.61,
+   "char_similarity": 1.0,
+   "word_recall": 1.0,
+   "nospace_similarity": 1.0,
+   "chars_out": 364,
+   "sample_out": "cpts 101 midterm review handout exam 1 is on october 12 in sloan 175 at 9:10 am. bring a p"
+  },
+  {
+   "file": "2_photocopy_handout.pdf",
+   "pages": 1,
+   "seconds": 40.55,
+   "char_similarity": 0.999,
+   "word_recall": 0.97,
+   "nospace_similarity": 1.0,
+   "chars_out": 363,
+   "sample_out": "cpts 101 midterm reviewhandout exam 1 is on october 12 in sloan 175 at 9:10 am. bring a pe"
+  },
+  {
+   "file": "3_slide.pdf",
+   "pages": 1,
+   "seconds": 15.57,
+   "char_similarity": 0.977,
+   "word_recall": 1.0,
+   "nospace_similarity": 0.986,
+   "chars_out": 175,
+   "sample_out": "lecture 7: sorting algorithms - merge sort runs in o(n log n) time - quicksort is fast on "
+  },
+  {
+   "file": "4_small_print_2pages.pdf",
+   "pages": 2,
+   "seconds": 50.73,
+   "char_similarity": 0.891,
+   "word_recall": 0.975,
+   "nospace_similarity": 0.892,
+   "chars_out": 2371,
+   "sample_out": "1. close email in requests ten percent within day labs of. 2. ten are the loses per baseme"
+  },
+  {
+   "file": "5_photo_of_text.png",
+   "pages": 1,
+   "seconds": 9.55,
+   "char_similarity": 1.0,
+   "word_recall": 1.0,
+   "nospace_similarity": 1.0,
+   "chars_out": 170,
+   "sample_out": "cpts 101 midterm review handout exam 1 is on october 12 in sloan 175 at 9:10 am. bring a p"
+  },
+  {
+   "file": "6_diagram_no_text.png",
+   "pages": 1,
+   "seconds": 7.22,
+   "char_similarity": null,
+   "word_recall": null,
+   "nospace_similarity": null,
+   "chars_out": 1,
+   "sample_out": "o"
+  },
+  {
+   "file": "7_two_columns.pdf",
+   "pages": 1,
+   "seconds": 20.72,
+   "char_similarity": 0.5,
+   "word_recall": 1.0,
+   "nospace_similarity": 0.498,
+   "chars_out": 252,
+   "sample_out": "week 1: introduction week 3: loops read chapter one read chapter three install the compile"
+  }
+ ]
+}
