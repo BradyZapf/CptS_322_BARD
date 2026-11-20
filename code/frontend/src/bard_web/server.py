@@ -2,9 +2,12 @@
 
 Security model
 --------------
-- Binds to 127.0.0.1 only -- not reachable from the network.
-- Every URL carries a per-session secret generated at startup; a request whose path
-  does not start with /<secret>/ is refused with 403.
+- Binds to 127.0.0.1 only -- not reachable from the network. The one exception is the
+  public demo container (Dockerfile), which passes host="0.0.0.0" and serves fake demo data,
+  never anyone's coursework.
+- Every URL carries a secret; a request whose path does not start with /<secret>/ is refused
+  with 403. By default the secret is generated at startup. The demo container passes a fixed
+  one so its public link survives a redeploy.
 - Only GET requests are accepted; POST/PUT/DELETE -> 405.
 - Content-Security-Policy: default-src 'self' blocks inline script on every page.
 - X-Content-Type-Options: nosniff on every response.
@@ -241,19 +244,21 @@ class WebServer:
     The Flask app is accessible as server.app for use with app.test_client().
     """
 
-    def __init__(self, storage_path: Path, port: int = 5000) -> None:
+    def __init__(self, storage_path: Path, port: int = 5000, host: str = "127.0.0.1",
+                 secret: str | None = None) -> None:
         self.storage_path = Path(storage_path)
         self.port = port
-        self.secret = secrets.token_hex(32)
+        self.host = host
+        self.secret = secret or secrets.token_hex(32)
         self.app = self._build_app()
 
     def url(self) -> str:
         """The base URL including the secret."""
-        return f"http://127.0.0.1:{self.port}/{self.secret}/"
+        return f"http://{self.host}:{self.port}/{self.secret}/"
 
     def run(self) -> None:
         """Start the development server (blocks)."""
-        self.app.run(host="127.0.0.1", port=self.port)
+        self.app.run(host=self.host, port=self.port)
 
     # ------------------------------------------------------------------
     # App factory

@@ -1,0 +1,65 @@
+# Docker: build the demo image on every pull request, and on every push to main also
+# publish it to Docker Hub, where Railway deploys it from.
+#
+# Needs two repository secrets (Settings -> Secrets and variables -> Actions):
+#   DOCKERHUB_USERNAME  the Docker Hub account the image is pushed to
+#   DOCKERHUB_TOKEN     a Docker Hub access token with Read & Write (never a password)
+# Until they exist, the build and smoke test still run, and the push is skipped.
+name: Docker
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:     # lets you re-run it by hand from the Actions tab
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    env:
+      # Push only from main (never from a pull request), and only once the secrets exist.
+      CAN_PUSH: ${{ github.event_name != 'pull_request' && secrets.DOCKERHUB_TOKEN != '' && secrets.DOCKERHUB_USERNAME != '' }}
+      # Image name on Docker Hub: <username>/bard-demo. Change it with a repository
+      # variable DOCKERHUB_IMAGE (Settings -> Secrets and variables -> Actions -> Variables).
+      IMAGE: ${{ secrets.DOCKERHUB_USERNAME || 'local' }}/${{ vars.DOCKERHUB_IMAGE || 'bard-demo' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: |
+          docker build \
+            --tag "$IMAGE:latest" \
+            --tag "$IMAGE:sha-${GITHUB_SHA::7}" \
+            .
+
+      - name: Smoke test (the page starts and shows the demo archive)
+        run: |
+          secret="$(openssl rand -hex 32)"
+          docker run --detach --name bard-smoke -p 8080:8080 -e BARD_WEB_SECRET="$secret" "$IMAGE:latest"
+          for i in $(seq 1 30); do
+            if curl --silent --fail "http://localhost:8080/$secret/" > page.html; then break; fi
+            sleep 1
+          done
+          grep -q "DEMO-BIO-101" page.html
+          curl --silent --fail "http://localhost:8080/$secret/search?q=greenhouse" | grep -q "Greenhouse lab moved"
+          # without the secret the page must be refused
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://localhost:8080/)" = 403
+          docker rm --force bard-smoke
+
+      - name: Log in to Docker Hub
+        if: env.CAN_PUSH == 'true'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Push image to Docker Hub
+        if: env.CAN_PUSH == 'true'
+        run: |
+          docker push "$IMAGE:latest"
+          docker push "$IMAGE:sha-${GITHUB_SHA::7}"
+          echo "Pushed $IMAGE:latest and $IMAGE:sha-${GITHUB_SHA::7}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Push skipped
+        if: env.CAN_PUSH != 'true'
+        run: echo "Built and tested only. Pushes happen on main once DOCKERHUB_USERNAME and DOCKERHUB_TOKEN are set." >> "$GITHUB_STEP_SUMMARY"
